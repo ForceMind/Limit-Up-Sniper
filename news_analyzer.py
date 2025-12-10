@@ -134,22 +134,43 @@ def get_cls_news(hours=12, logger=None):
             
     return news_list
 
-def analyze_news_with_deepseek(news_batch, market_summary="", logger=None):
+def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode="after_hours"):
     """
     使用 AI 批量分析新闻和市场数据
     """
     if not news_batch and not market_summary:
         return []
 
-    msg = f"[*] 调用 AI 分析 {len(news_batch)} 条新闻及市场数据..."
+    msg = f"[*] 调用 AI 分析 {len(news_batch)} 条新闻及市场数据 ({mode})..."
     print(msg)
     if logger: logger(msg)
 
     # 构造 Prompt
     news_content = "\n".join([f"{i+1}. {n['text']}" for i, n in enumerate(news_batch)])
     
+    if mode == "after_hours":
+        task_desc = "进行【盘后复盘】并挖掘【明日竞价关注股】"
+        strategy_desc = """
+1. **Aggressive (竞价抢筹)**: 
+   - 核心龙头的一字板预期，或今日强势连板股的弱转强。
+   - 策略：明日开盘集合竞价直接挂单买入。
+2. **LimitUp (盘中打板)**: 
+   - 首板挖掘，或大盘共振的低位补涨股。
+   - 策略：放入自选，盘中观察，如果快速拉升或封板则买入。
+"""
+    else: # intraday
+        task_desc = "进行【盘中实时分析】并挖掘【当前即将涨停股】"
+        strategy_desc = """
+1. **Aggressive (立即扫货)**: 
+   - 突发重大利好，股价正在快速拉升，即将封板。
+   - 策略：立即市价买入，防止买不到。
+2. **LimitUp (回封低吸)**: 
+   - 炸板回落但承接有力，或分时均线支撑强。
+   - 策略：低吸博弈回封。
+"""
+
     system_prompt = f"""
-你是一个A股顶级游资操盘手。你的任务是进行【每日复盘】并挖掘【明日涨停股】。
+你是一个A股顶级游资操盘手。你的任务是{task_desc}。
 
 【今日市场数据】
 {market_summary}
@@ -157,16 +178,10 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None):
 【最新舆情新闻】
 {news_content}
 
-请结合市场数据（涨停梯队、炸板情况）和新闻舆情，分析市场情绪主线，并预测明日的关注标的。
+请结合市场数据（涨停梯队、炸板情况）和新闻舆情，分析市场情绪主线，并预测关注标的。
 
 请严格按照以下标准分类：
-1. **Aggressive (竞价抢筹)**: 
-   - 核心龙头的一字板预期，或今日强势连板股的弱转强。
-   - 策略：开盘集合竞价直接挂单买入。
-   
-2. **LimitUp (盘中打板)**: 
-   - 首板挖掘，或大盘共振的低位补涨股。
-   - 策略：放入自选，盘中观察，如果快速拉升或封板则买入。
+{strategy_desc}
 
 请返回纯 JSON 格式，不要包含 Markdown 格式，格式如下：
 {{
@@ -227,8 +242,8 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None):
         if logger: logger(msg)
         return []
 
-def generate_watchlist(logger=None):
-    msg = "[-] 启动复盘分析 (AI Powered)..."
+def generate_watchlist(logger=None, mode="after_hours"):
+    msg = f"[-] 启动{mode}分析 (AI Powered)..."
     print(msg)
     if logger: logger(msg)
     
@@ -237,8 +252,10 @@ def generate_watchlist(logger=None):
     if logger: logger(f"[-] 市场数据获取完成。")
 
     # 1. 获取新闻
-    news_items = get_cls_news(hours=6, logger=logger) # 缩短时间范围，聚焦最新消息
-    msg = f"[-] 获取到 {len(news_items)} 条有效资讯。"
+    # 盘中模式只看最近 2 小时，盘后模式看 12 小时
+    hours = 2 if mode == "intraday" else 12
+    news_items = get_cls_news(hours=hours, logger=logger) 
+    msg = f"[-] 获取到 {len(news_items)} 条有效资讯 (最近 {hours} 小时)。"
     print(msg)
     if logger: logger(msg)
     
@@ -248,14 +265,14 @@ def generate_watchlist(logger=None):
     batch_size = 10
     # 如果没有新闻，也至少跑一次市场数据分析
     if not news_items:
-        news_items = [{"text": "今日无重大新闻，请基于市场数据分析。"}]
+        news_items = [{"text": "当前时段无重大新闻，请基于市场数据分析。"}]
 
     for i in range(0, len(news_items), batch_size):
         batch = news_items[i:i+batch_size]
         # 只有第一批带上完整的 market_summary，避免重复消耗 token
         current_market_summary = market_summary if i == 0 else "（市场数据参考上文）"
         
-        analyzed_stocks = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger)
+        analyzed_stocks = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger, mode=mode)
         
         for stock in analyzed_stocks:
             code = stock['code']

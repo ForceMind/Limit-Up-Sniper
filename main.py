@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 import requests
@@ -128,18 +128,19 @@ def thread_logger(msg):
     log_queue.put(msg)
 
 @app.post("/api/analyze")
-async def run_analysis(background_tasks: BackgroundTasks):
+async def run_analysis(background_tasks: BackgroundTasks, mode: str = Query("after_hours")):
     """触发复盘分析"""
     # 在后台运行，不阻塞 API
-    background_tasks.add_task(execute_analysis)
-    return {"status": "success", "message": "Analysis started in background"}
+    background_tasks.add_task(execute_analysis, mode)
+    return {"status": "success", "message": f"{mode} analysis started in background"}
 
-def execute_analysis():
+def execute_analysis(mode="after_hours"):
     try:
-        thread_logger(">>> 开始执行后台分析任务...")
-        generate_watchlist(logger=thread_logger)
+        mode_name = "盘后复盘" if mode == "after_hours" else "盘中突击"
+        thread_logger(f">>> 开始执行{mode_name}任务...")
+        generate_watchlist(logger=thread_logger, mode=mode)
         refresh_watchlist()
-        thread_logger(">>> 分析任务完成，列表已更新。")
+        thread_logger(f">>> {mode_name}任务完成，列表已更新。")
     except Exception as e:
         thread_logger(f"!!! 分析任务出错: {e}")
 
