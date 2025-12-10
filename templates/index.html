@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>涨停狙击手 (Limit-Up Sniper)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        /* 自定义呼吸灯动画颜色 */
+        @keyframes sniper-pulse {
+            0%, 100% { background-color: rgba(153, 27, 27, 0.2); }
+            50% { background-color: rgba(153, 27, 27, 0.6); }
+        }
+        .animate-sniper {
+            animation: sniper-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-mono min-h-screen p-2 md:p-4 overflow-hidden flex flex-col">
+    {% raw %}
+    <div id="app" class="container mx-auto max-w-full h-full flex flex-col">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-2 md:mb-4 border-b border-gray-700 pb-2 px-2 md:px-4 shrink-0 gap-2">
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                    <h1 class="text-lg md:text-xl font-bold tracking-wider text-red-500">涨停狙击手 <span class="hidden md:inline text-xs text-gray-500 ml-2">指挥中心</span></h1>
+                </div>
+                <!-- Mobile Tab Switcher -->
+                <div class="flex md:hidden bg-gray-800 rounded p-1">
+                    <button @click="activeTab = 'pre'" class="px-3 py-1 text-xs rounded transition-colors" :class="activeTab === 'pre' ? 'bg-purple-600 text-white' : 'text-gray-400'">竞价</button>
+                    <button @click="activeTab = 'intra'" class="px-3 py-1 text-xs rounded transition-colors" :class="activeTab === 'intra' ? 'bg-red-600 text-white' : 'text-gray-400'">盘中</button>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between md:justify-end">
+                <!-- Add Stock Input -->
+                <div class="flex items-center gap-1">
+                    <input v-model="newStockCode" @keyup.enter="addStock" type="text" placeholder="加自选(sh600xxx)" class="bg-gray-800 border border-gray-700 text-xs px-2 py-1 rounded w-28 focus:outline-none focus:border-blue-500 uppercase">
+                    <button @click="addStock" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs">+</button>
+                </div>
+
+                <button @click="runAnalysis" :disabled="isAnalyzing" 
+                        class="px-3 py-1 text-xs font-bold rounded border transition-colors flex items-center gap-2 whitespace-nowrap"
+                        :class="isAnalyzing ? 'bg-gray-700 text-gray-500 border-gray-600 cursor-not-allowed' : 'bg-blue-900/30 text-blue-400 border-blue-500/50 hover:bg-blue-800/50'">
+                    <span v-if="isAnalyzing" class="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></span>
+                    {{ isAnalyzing ? '分析中...' : '开始复盘' }}
+                </button>
+                <div class="hidden md:block text-xs text-gray-500 font-mono whitespace-nowrap">
+                    更新: {{ lastUpdated }}
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content: Split View (Desktop) / Tabs (Mobile) -->
+        <div class="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden px-2 md:px-4 pb-2 md:pb-4">
+            
+            <!-- Left Column: Pre-Market / Watchlist -->
+            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2"
+                 :class="{'hidden md:flex': activeTab !== 'pre'}"
+                 v-show="showPreMarket">
+                <div class="p-3 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-purple-400 font-bold flex items-center gap-2 text-sm md:text-base">
+                        <span>🎯</span> 竞价抢筹 (Aggressive)
+                    </h2>
+                    <span class="text-xs text-gray-500">{{ aggressiveStocks.length }} 标的</span>
+                </div>
+                
+                <!-- Table Header -->
+                <div class="grid grid-cols-6 gap-2 px-2 md:px-4 py-2 text-xs text-gray-500 border-b border-gray-700 bg-gray-900/50">
+                    <div class="col-span-1">代码</div>
+                    <div class="col-span-1">名称</div>
+                    <div class="col-span-1 text-right">现价</div>
+                    <div class="col-span-1 text-right">涨幅</div>
+                    <div class="col-span-1 text-center">概念</div>
+                    <div class="col-span-1 text-right">评分</div>
+                </div>
+
+                <!-- Scrollable List -->
+                <div class="flex-1 overflow-y-auto p-1 md:p-2 space-y-1">
+                    <div v-for="stock in aggressiveStocks" :key="stock.code" 
+                         class="grid grid-cols-6 gap-2 px-2 md:px-3 py-2 rounded text-sm items-center hover:bg-gray-700 transition-colors bg-purple-900/10 border border-purple-500/20">
+                        <div class="col-span-1 text-gray-400 text-xs md:text-sm">{{ stock.code }}</div>
+                        <div class="col-span-1 font-bold truncate">{{ stock.name }}</div>
+                        <div class="col-span-1 text-right font-mono">{{ stock.current.toFixed(2) }}</div>
+                        <div class="col-span-1 text-right font-bold" 
+                             :class="getColorClass(stock.change_percent)">
+                            {{ stock.change_percent }}%
+                        </div>
+                        <div class="col-span-1 text-center text-xs text-gray-400 truncate">
+                            {{ stock.concept }}
+                        </div>
+                        <div class="col-span-1 text-right text-purple-400 font-bold">{{ stock.initial_score }}</div>
+                    </div>
+                    <div v-if="aggressiveStocks.length === 0" class="text-center text-gray-600 py-4 text-xs">暂无竞价目标</div>
+                </div>
+            </div>
+
+            <!-- Right Column: Intraday Scanner -->
+            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2"
+                 :class="{'hidden md:flex': activeTab !== 'intra'}"
+                 v-show="showIntraday">
+                <div class="p-3 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-red-400 font-bold flex items-center gap-2 text-sm md:text-base">
+                        <span>🚀</span> 盘中打板 (Intraday)
+                    </h2>
+                    <span class="text-xs text-gray-500">动量排序</span>
+                </div>
+
+                <!-- Table Header -->
+                <div class="grid grid-cols-8 gap-1 md:gap-2 px-2 md:px-4 py-2 text-xs text-gray-500 border-b border-gray-700 bg-gray-900/50">
+                    <div class="col-span-1">排名</div>
+                    <div class="col-span-1">代码</div>
+                    <div class="col-span-2">名称</div>
+                    <div class="col-span-1 text-right">现价</div>
+                    <div class="col-span-1 text-right">涨幅</div>
+                    <div class="col-span-1 text-right">涨速</div>
+                    <div class="col-span-1 text-right">总分</div>
+                </div>
+
+                <!-- Scrollable List with Animation -->
+                <div class="flex-1 overflow-y-auto p-1 md:p-2 relative">
+                    <transition-group name="list" tag="div" class="space-y-1">
+                        <div v-for="(stock, index) in limitUpStocks" :key="stock.code" 
+                             class="grid grid-cols-8 gap-1 md:gap-2 px-2 md:px-3 py-2 rounded text-sm items-center hover:bg-gray-700 border border-transparent"
+                             :class="getRowHighlightClass(stock)">
+                            
+                            <div class="col-span-1 font-mono text-gray-500 text-xs">#{{ index + 1 }}</div>
+                            <div class="col-span-1 text-gray-400 text-xs scale-90 origin-left">{{ stock.code }}</div>
+                            <div class="col-span-2 font-bold truncate">{{ stock.name }}</div>
+                            <div class="col-span-1 text-right font-mono">{{ stock.current.toFixed(2) }}</div>
+                            <div class="col-span-1 text-right font-bold" :class="getColorClass(stock.change_percent)">
+                                {{ stock.change_percent }}%
+                            </div>
+                            <div class="col-span-1 text-right text-yellow-500 font-mono text-xs">
+                                {{ stock.speed }}%
+                            </div>
+                            <div class="col-span-1 text-right font-bold text-blue-400">
+                                {{ stock.total_score.toFixed(1) }}
+                            </div>
+                        </div>
+                    </transition-group>
+                    <div v-if="limitUpStocks.length === 0" class="text-center text-gray-600 py-4 text-xs">暂无盘中目标</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- AI Log Window (Bottom Panel) -->
+        <div class="h-32 md:h-40 bg-black border-t border-gray-700 flex flex-col shrink-0">
+            <div class="px-4 py-1 bg-gray-800 text-xs text-gray-400 flex justify-between items-center">
+                <span>🤖 AI 实时日志 (AI分析)</span>
+                <span class="w-2 h-2 rounded-full" :class="wsConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1" ref="logContainer">
+                <div v-for="(log, i) in logs" :key="i" class="text-gray-300 break-words">
+                    <span class="text-gray-600">[{{ log.time }}]</span> {{ log.msg }}
+                </div>
+                <div v-if="logs.length === 0" class="text-gray-600 italic">等待任务启动...</div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="stocks.length === 0 && !isAnalyzing" class="absolute inset-0 flex items-center justify-center bg-gray-900/90 z-50">
+            <div class="text-center">
+                <div class="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-red-500 tracking-widest animate-pulse">系统初始化中...</p>
+            </div>
+        </div>
+    </div>
+    {% endraw %}
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    stocks: [],
+                    lastUpdated: '等待中...',
+                    previousPrices: {}, 
+                    isAnalyzing: false,
+                    activeTab: 'pre', // 'pre' or 'intra' for mobile view
+                    newStockCode: '',
+                    logs: [],
+                    wsConnected: false,
+                    currentTime: new Date()
+                }
+            },
+            computed: {
+                // Time-based visibility logic
+                showPreMarket() {
+                    // Show Pre-market if time < 09:30 OR time >= 15:00 (Next day prep)
+                    // Or manual override via activeTab on mobile
+                    const h = this.currentTime.getHours();
+                    const m = this.currentTime.getMinutes();
+                    const timeVal = h * 100 + m;
+                    
+                    // If mobile, rely on tabs
+                    if (window.innerWidth < 768) return this.activeTab === 'pre';
+                    
+                    // Desktop logic: Hide after 09:30, Show after 15:00
+                    if (timeVal >= 930 && timeVal < 1500) return false;
+                    return true;
+                },
+                showIntraday() {
+                    // Show Intraday if 09:30 <= time < 15:00
+                    const h = this.currentTime.getHours();
+                    const m = this.currentTime.getMinutes();
+                    const timeVal = h * 100 + m;
+                    
+                    if (window.innerWidth < 768) return this.activeTab === 'intra';
+                    
+                    // Desktop logic: Hide after 15:00? User said "Hide Intraday after close"
+                    if (timeVal >= 1500) return false;
+                    return true;
+                },
+                // Left Column: Aggressive Strategy
+                aggressiveStocks() {
+                    return this.stocks
+                        .filter(s => s.strategy === 'Aggressive')
+                        .sort((a, b) => b.initial_score - a.initial_score);
+                },
+                // Right Column: LimitUp Strategy + Manual Adds
+                limitUpStocks() {
+                    return this.stocks
+                        .filter(s => s.strategy === 'LimitUp' || s.strategy === 'Neutral' || s.strategy === 'Manual') 
+                        .map(stock => {
+                            const momentumScore = stock.change_percent; 
+                            const total = (stock.initial_score * 0.4) + (momentumScore * 0.6);
+                            return { ...stock, total_score: total };
+                        })
+                        .sort((a, b) => b.total_score - a.total_score);
+                }
+            },
+            methods: {
+                connectWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws/logs`;
+                    const ws = new WebSocket(wsUrl);
+                    
+                    ws.onopen = () => {
+                        this.wsConnected = true;
+                        this.addLog('系统连接成功');
+                    };
+                    
+                    ws.onmessage = (event) => {
+                        this.addLog(event.data);
+                    };
+                    
+                    ws.onclose = () => {
+                        this.wsConnected = false;
+                        setTimeout(this.connectWebSocket, 3000); // Reconnect
+                    };
+                },
+                addLog(msg) {
+                    const time = new Date().toLocaleTimeString();
+                    this.logs.push({ time, msg });
+                    if (this.logs.length > 100) this.logs.shift();
+                    // Auto scroll
+                    this.$nextTick(() => {
+                        const container = this.$refs.logContainer;
+                        if (container) container.scrollTop = container.scrollHeight;
+                    });
+                },
+                async runAnalysis() {
+                    this.isAnalyzing = true;
+                    try {
+                        const response = await fetch('/api/analyze', { method: 'POST' });
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            // await this.fetchData(); // WebSocket will tell us when done
+                        } else {
+                            alert('分析失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        console.error('Analysis error:', error);
+                        alert('请求错误');
+                    } finally {
+                        this.isAnalyzing = false;
+                    }
+                },
+                async addStock() {
+                    if (!this.newStockCode) return;
+                    const code = this.newStockCode.trim().toLowerCase();
+                    // Simple validation
+                    if (!code.startsWith('sh') && !code.startsWith('sz')) {
+                        alert('代码格式错误，请输入如 sh600519');
+                        return;
+                    }
+                    
+                    try {
+                        const response = await fetch(`/api/add_stock?code=${code}`, { method: 'POST' });
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            this.newStockCode = '';
+                            await this.fetchData();
+                        } else {
+                            alert('添加失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        alert('添加错误');
+                    }
+                },
+                async fetchData() {
+                    try {
+                        const response = await fetch('/api/stocks');
+                        const data = await response.json();
+                        
+                        const now = Date.now();
+                        data.forEach(stock => {
+                            const prev = this.previousPrices[stock.code];
+                            if (prev) {
+                                const speed = ((stock.current - prev) / prev) * 100;
+                                stock.speed = speed.toFixed(2);
+                            } else {
+                                stock.speed = "0.00";
+                            }
+                            this.previousPrices[stock.code] = stock.current;
+                        });
+
+                        this.stocks = data;
+                        this.lastUpdated = new Date().toLocaleTimeString();
+                    } catch (error) {
+                        console.error('Data fetch failed:', error);
+                    }
+                },
+                getColorClass(percent) {
+                    if (percent > 0) return 'text-red-500';
+                    if (percent < 0) return 'text-green-500';
+                    return 'text-gray-400';
+                },
+                getRowHighlightClass(stock) {
+                    if (stock.strategy === 'LimitUp' && stock.change_percent > 8) {
+                        return 'bg-red-900/40 animate-pulse border-red-500';
+                    }
+                    return 'border-gray-800';
+                }
+            },
+            mounted() {
+                this.fetchData();
+                this.connectWebSocket();
+                setInterval(this.fetchData, 3000);
+                // Update time every minute for visibility logic
+                setInterval(() => {
+                    this.currentTime = new Date();
+                }, 60000);
+            }
+        }).mount('#app')
+    </script>
+
+    <style>
+        /* List Transition Animation */
+        .list-move,
+        .list-enter-active,
+        .list-leave-active {
+            transition: all 0.5s ease;
+        }
+        .list-enter-from,
+        .list-leave-to {
+            opacity: 0;
+            transform: translateX(30px);
+        }
+        .list-leave-active {
+            position: absolute;
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; 
+        }
+    </style>
+</body>
+</html>
