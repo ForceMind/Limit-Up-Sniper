@@ -17,9 +17,9 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-100 font-mono min-h-screen p-2 md:p-4 overflow-hidden flex flex-col">
+<body class="bg-gray-900 text-gray-100 font-mono h-screen p-2 md:p-4 overflow-hidden flex flex-col">
     {% raw %}
-    <div id="app" class="container mx-auto max-w-full h-full flex flex-col">
+    <div id="app" class="container mx-auto max-w-full flex-1 flex flex-col overflow-hidden">
         <!-- Header -->
         <header class="flex flex-col md:flex-row justify-between items-center mb-2 md:mb-4 border-b border-gray-700 pb-2 px-2 md:px-4 shrink-0 gap-2">
             <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
@@ -63,7 +63,7 @@
         <div class="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden px-2 md:px-4 pb-2 md:pb-4">
             
             <!-- Left Column: Pre-Market / Watchlist -->
-            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2"
+            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2 h-full"
                  :class="{'hidden md:flex': activeTab !== 'pre'}"
                  v-show="showPreMarket">
                 <div class="p-3 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
@@ -125,7 +125,7 @@
             </div>
 
             <!-- Right Column: Intraday Scanner -->
-            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2"
+            <div class="flex flex-col bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden w-full md:w-1/2 h-full"
                  :class="{'hidden md:flex': activeTab !== 'intra'}"
                  v-show="showIntraday">
                 <div class="p-3 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
