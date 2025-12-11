@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 import os
 import re
+from stock_utils import calculate_metrics
+from market_scanner import scan_intraday_limit_up
 
 # Configuration
 CLS_API_URL = "https://www.cls.cn/nodeapi/telegraphList"
@@ -41,7 +43,7 @@ def get_market_data(logger=None):
     
     # 1. 涨停池
     try:
-        resp = requests.get(base_url + "getTopicZTPool", params=params, headers=headers, timeout=5)
+        resp = requests.get(base_url + "getTopicZtpPool", params=params, headers=headers, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
             pool = data.get('data', {}).get('pool', [])
@@ -58,7 +60,7 @@ def get_market_data(logger=None):
 
     # 2. 炸板池
     try:
-        resp = requests.get(base_url + "getTopicZBPool", params=params, headers=headers, timeout=5)
+        resp = requests.get(base_url + "getTopicZbPool", params=params, headers=headers, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
             pool = data.get('data', {}).get('pool', [])
@@ -242,6 +244,100 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
         if logger: logger(msg)
         return []
 
+def analyze_single_stock(stock_data, logger=None):
+    """
+    对单个股票进行深度AI分析 (大师级逻辑)
+    """
+    name = stock_data.get('name', '未知股票')
+    code = stock_data.get('code', '')
+    price = stock_data.get('current', 0)
+    change = stock_data.get('change_percent', 0)
+    concept = stock_data.get('concept', '')
+    
+    # 1. 尝试获取该股票的最新新闻 (模拟搜索)
+    # 这里简单复用 get_cls_news 的逻辑，但针对特定关键词过滤
+    # 实际生产中应该调用搜索引擎API或专门的新闻接口
+    news_context = "暂无特定新闻"
+    try:
+        # 简化的新闻获取逻辑，仅作为示例
+        # 实际应该去搜 "股票名称 + 利好/利空"
+        pass 
+    except:
+        pass
+
+    # 2. 构建大师级分析 Prompt
+    prompt = f"""
+你是一位拥有20年经验的A股顶级游资操盘手，精通情绪周期、题材挖掘和技术面分析。请对股票【{name} ({code})】进行全方位的深度推演。
+
+【盘面数据】
+- 现价: {price}
+- 涨跌幅: {change}%
+- 核心概念: {concept}
+- 辅助指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
+
+【分析逻辑】
+请按照以下步骤进行思考（Chain of Thought），并输出最终报告：
+
+1. **题材定性**: 该股票的核心逻辑是什么？是否属于当前市场的主线题材（如AI、低空经济、华为等）？是龙头、中军还是跟风？
+2. **情绪周期**: 当前市场情绪处于什么阶段（混沌、发酵、高潮、退潮）？该股在当前周期中的地位如何？
+3. **技术面与盘口**: 结合涨跌幅和指标，判断主力意图（洗盘、出货、吸筹、拉升）。
+4. **风险提示**: 有无潜在的利空或抛压风险（如减持、监管、前期套牢盘）。
+
+【最终输出】
+请以 Markdown 格式输出一份简报，包含以下章节：
+### 1. 核心逻辑与地位
+(简述题材及地位)
+
+### 2. 盘面深度解析
+(结合情绪与技术面分析)
+
+### 3. 操盘计划 (Action Plan)
+- **买入策略**: (具体的买点，如打板、低吸、半路)
+- **卖出策略**: (止盈止损位)
+- **胜率预估**: (高/中/低)
+
+请保持语言犀利、专业，拒绝模棱两可的废话。
+"""
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是一位A股顶级游资，风格犀利，擅长捕捉龙头。"},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.4,
+        "stream": False
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+    }
+
+    try:
+        if logger: logger(f"[*] 正在请求AI大师分析: {name}...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=60)
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            return content
+        else:
+            return f"分析失败: API返回错误 {response.status_code}"
+    except Exception as e:
+        return f"分析失败: {str(e)}"
+
+    try:
+        if logger: logger(f"[*] 正在请求AI分析股票: {name}...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            return content
+        else:
+            return f"分析失败: API返回错误 {response.status_code}"
+    except Exception as e:
+        return f"分析失败: {str(e)}"
+
 def generate_watchlist(logger=None, mode="after_hours"):
     msg = f"[-] 启动{mode}分析 (AI Powered)..."
     print(msg)
@@ -261,12 +357,60 @@ def generate_watchlist(logger=None, mode="after_hours"):
     
     watchlist = {}
     
-    # 2. 分批分析 (避免 Token 溢出，每批 10 条)
-    batch_size = 10
+    # 1. 加载现有列表
+    output_file = "watchlist.json"
+    if os.path.exists(output_file):
+        try:
+            with open(output_file, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+                for item in existing_data:
+                    watchlist[item['code']] = item
+        except:
+            pass
+
+    # 2. 如果是盘中模式，进行行情扫描并更新/剔除
+    if mode == "intraday":
+        scanner_stocks = scan_intraday_limit_up(logger=logger)
+        scanner_codes = set(s['code'] for s in scanner_stocks)
+        
+        # 2.1 标记不再满足条件的股票为 Discarded
+        for code, item in watchlist.items():
+            # 只处理之前是由盘中突击策略加入的股票
+            # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
+            if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
+                if code not in scanner_codes:
+                    # 不在最新的扫描结果中，说明条件已变差(或已涨停)
+                    # 标记为 Discarded，前端根据此状态显示在剔除区
+                    item['strategy_type'] = 'Discarded'
+                    if '已剔除' not in item['news_summary']:
+                        item['news_summary'] += " (已剔除)"
+        
+        # 2.2 添加/更新当前扫描到的股票
+        for stock in scanner_stocks:
+            code = stock['code']
+            # 计算指标
+            metrics = calculate_metrics(code)
+            
+            new_item = {
+                "code": code,
+                "name": stock['name'],
+                "news_summary": stock['reason'],
+                "concept": stock['concept'],
+                "initial_score": stock['score'],
+                "strategy_type": stock['strategy'],
+                "seal_rate": metrics['seal_rate'],
+                "broken_rate": metrics['broken_rate'],
+                "next_day_premium": metrics['next_day_premium'],
+                "limit_up_days": metrics['limit_up_days']
+            }
+            # 覆盖旧数据 (包括之前可能被标记为 Discarded 的，如果又满足条件了就复活)
+            watchlist[code] = new_item
+            
     # 如果没有新闻，也至少跑一次市场数据分析
     if not news_items:
         news_items = [{"text": "当前时段无重大新闻，请基于市场数据分析。"}]
 
+    batch_size = 5
     for i in range(0, len(news_items), batch_size):
         batch = news_items[i:i+batch_size]
         # 只有第一批带上完整的 market_summary，避免重复消耗 token
@@ -286,17 +430,38 @@ def generate_watchlist(logger=None, mode="after_hours"):
             print(msg)
             if logger: logger(msg)
             
+            # 计算高级指标
+            metrics = calculate_metrics(code)
+            
             # 去重逻辑：保留分数更高的
             current_score = stock.get('score', 0)
+            
+            # 构造新数据对象
+            new_item = {
+                "code": code,
+                "name": stock.get('name', '未知'),
+                "news_summary": stock.get('reason', '无理由'),
+                "concept": stock.get('concept', '其他'),
+                "initial_score": current_score,
+                "strategy_type": stock.get('strategy', 'Neutral'), # Aggressive or LimitUp
+                # 合并高级指标
+                "seal_rate": metrics['seal_rate'],
+                "broken_rate": metrics['broken_rate'],
+                "next_day_premium": metrics['next_day_premium'],
+                "limit_up_days": metrics['limit_up_days']
+            }
+            
+            # 如果已存在，且新分数更高，则覆盖；否则保留旧的但更新指标
             if code not in watchlist or current_score > watchlist[code]['initial_score']:
-                watchlist[code] = {
-                    "code": code,
-                    "name": stock.get('name', '未知'),
-                    "news_summary": stock.get('reason', '无理由'),
-                    "concept": stock.get('concept', '其他'),
-                    "initial_score": current_score,
-                    "strategy_type": stock.get('strategy', 'Neutral') # Aggressive or LimitUp
-                }
+                watchlist[code] = new_item
+            else:
+                # 仅更新指标和新闻（如果需要）
+                watchlist[code].update({
+                    "seal_rate": metrics['seal_rate'],
+                    "broken_rate": metrics['broken_rate'],
+                    "next_day_premium": metrics['next_day_premium'],
+                    "limit_up_days": metrics['limit_up_days']
+                })
         
         time.sleep(1) # 避免 API 速率限制
 
@@ -311,13 +476,18 @@ def generate_watchlist(logger=None, mode="after_hours"):
             {"code": "sz300059", "name": "东方财富", "concept": "互联网金融", "score": 8.0, "strategy": "LimitUp", "reason": "成交量突破万亿"}
         ]
         for t in test_data:
+            metrics = calculate_metrics(t['code'])
             watchlist[t['code']] = {
                 "code": t['code'],
                 "name": t['name'],
                 "news_summary": t['reason'],
                 "concept": t['concept'],
                 "initial_score": t['score'],
-                "strategy_type": t['strategy']
+                "strategy_type": t['strategy'],
+                "seal_rate": metrics['seal_rate'],
+                "broken_rate": metrics['broken_rate'],
+                "next_day_premium": metrics['next_day_premium'],
+                "limit_up_days": metrics['limit_up_days']
             }
 
     # 3. 保存结果
