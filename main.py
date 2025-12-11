@@ -312,15 +312,44 @@ async def run_initial_scan():
     try:
         # 等待几秒确保其他组件就绪
         await asyncio.sleep(2)
-        await asyncio.to_thread(execute_analysis, "intraday")
-        print("Startup: Initial scan completed.")
+        if SYSTEM_CONFIG["auto_analysis_enabled"]:
+            await asyncio.to_thread(execute_analysis, "intraday")
+            print("Startup: Initial scan completed.")
+            # Update last run time to prevent immediate re-run by scheduler
+            SYSTEM_CONFIG["last_run_time"] = time.time()
     except Exception as e:
         print(f"Startup scan error: {e}")
+
+# Global Configuration
+SYSTEM_CONFIG = {
+    "auto_analysis_enabled": True,
+    "use_smart_schedule": True,
+    "fixed_interval_minutes": 60,
+    "last_run_time": 0,
+    "next_run_time": 0,
+    "current_status": "Idle"
+}
+
+@app.get("/api/config")
+async def get_config():
+    return SYSTEM_CONFIG
+
+class ConfigUpdate(BaseModel):
+    auto_analysis_enabled: bool
+    use_smart_schedule: bool
+    fixed_interval_minutes: int
+
+@app.post("/api/config")
+async def update_config(config: ConfigUpdate):
+    global SYSTEM_CONFIG
+    SYSTEM_CONFIG["auto_analysis_enabled"] = config.auto_analysis_enabled
+    SYSTEM_CONFIG["use_smart_schedule"] = config.use_smart_schedule
+    SYSTEM_CONFIG["fixed_interval_minutes"] = config.fixed_interval_minutes
+    return {"status": "success", "config": SYSTEM_CONFIG}
 
 async def scheduler_loop():
     """Background scheduler for periodic tasks"""
     print("Starting background scheduler...")
-    last_analysis_time = 0
     last_pool_update_time = 0
     
     while True:
@@ -334,75 +363,100 @@ async def scheduler_loop():
         lookback_hours = 1
         mode = "after_hours"
         
-        # 09:30 - 15:00 (Trading)
-        if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
-            interval_seconds = 15 * 60 # 15 mins
-            lookback_hours = 0.25
-            mode = "intraday"
-            
-        # 15:00 - 15:15 (Wait)
-        elif current_hour == 15 and current_minute < 15:
-            interval_seconds = 999999 # Do not run
-            
-        # 15:15 - 18:00 (Post-market 1h)
-        elif current_hour == 15 and current_minute >= 15:
-             interval_seconds = 3600
-             lookback_hours = 1
-             mode = "after_hours"
-        elif 16 <= current_hour < 18:
-             interval_seconds = 3600
-             lookback_hours = 1
-             mode = "after_hours"
-             
-        # 18:00 - 23:00 (Evening 3h)
-        elif 18 <= current_hour < 23:
-             interval_seconds = 3 * 3600
-             lookback_hours = 3
-             mode = "after_hours"
-             
-        # 23:00 - 06:00 (Night 6h)
-        elif current_hour >= 23 or current_hour < 6:
-             interval_seconds = 6 * 3600
-             lookback_hours = 6
-             mode = "after_hours"
-             
-        # 06:00 - 08:30 (Morning 1h)
-        elif 6 <= current_hour < 8:
-             interval_seconds = 3600
-             lookback_hours = 1
-             mode = "after_hours"
-        elif current_hour == 8 and current_minute < 30:
-             interval_seconds = 3600
-             lookback_hours = 1
-             mode = "after_hours"
-             
-        # 08:30 - 09:30 (Pre-open 15m)
-        elif current_hour == 8 and current_minute >= 30:
-             interval_seconds = 15 * 60
-             lookback_hours = 0.25
-             mode = "after_hours"
-        elif current_hour == 9 and current_minute < 30:
-             interval_seconds = 15 * 60
-             lookback_hours = 0.25
-             mode = "after_hours"
+        if SYSTEM_CONFIG["use_smart_schedule"]:
+            # 09:30 - 15:00 (Trading)
+            if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
+                interval_seconds = 15 * 60 # 15 mins
+                lookback_hours = 0.25
+                mode = "intraday"
+                
+            # 15:00 - 15:15 (Wait)
+            elif current_hour == 15 and current_minute < 15:
+                interval_seconds = 999999 # Do not run
+                
+            # 15:15 - 18:00 (Post-market 1h)
+            elif current_hour == 15 and current_minute >= 15:
+                 interval_seconds = 3600
+                 lookback_hours = 1
+                 mode = "after_hours"
+            elif 16 <= current_hour < 18:
+                 interval_seconds = 3600
+                 lookback_hours = 1
+                 mode = "after_hours"
+                 
+            # 18:00 - 23:00 (Evening 3h)
+            elif 18 <= current_hour < 23:
+                 interval_seconds = 3 * 3600
+                 lookback_hours = 3
+                 mode = "after_hours"
+                 
+            # 23:00 - 06:00 (Night 6h)
+            elif current_hour >= 23 or current_hour < 6:
+                 interval_seconds = 6 * 3600
+                 lookback_hours = 6
+                 mode = "after_hours"
+                 
+            # 06:00 - 08:30 (Morning 1h)
+            elif 6 <= current_hour < 8:
+                 interval_seconds = 3600
+                 lookback_hours = 1
+                 mode = "after_hours"
+            elif current_hour == 8 and current_minute < 30:
+                 interval_seconds = 3600
+                 lookback_hours = 1
+                 mode = "after_hours"
+                 
+            # 08:30 - 09:30 (Pre-open 15m)
+            elif current_hour == 8 and current_minute >= 30:
+                 interval_seconds = 15 * 60
+                 lookback_hours = 0.25
+                 mode = "after_hours"
+            elif current_hour == 9 and current_minute < 30:
+                 interval_seconds = 15 * 60
+                 lookback_hours = 0.25
+                 mode = "after_hours"
 
-        # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
-        if current_hour == 15 and current_minute >= 15:
-             last_run_dt = datetime.fromtimestamp(last_analysis_time)
-             # If last run was today but before 15:15
-             if last_run_dt.date() == now.date() and (last_run_dt.hour < 15 or (last_run_dt.hour == 15 and last_run_dt.minute < 15)):
-                 interval_seconds = 0 # Force run
+            # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
+            if current_hour == 15 and current_minute >= 15:
+                 last_run_dt = datetime.fromtimestamp(SYSTEM_CONFIG["last_run_time"]) if SYSTEM_CONFIG["last_run_time"] > 0 else datetime.fromtimestamp(0)
+                 # If last run was today but before 15:15
+                 if last_run_dt.date() == now.date() and (last_run_dt.hour < 15 or (last_run_dt.hour == 15 and last_run_dt.minute < 15)):
+                     interval_seconds = 0 # Force run
+        else:
+            # Manual Interval
+            interval_seconds = SYSTEM_CONFIG["fixed_interval_minutes"] * 60
+            lookback_hours = SYSTEM_CONFIG["fixed_interval_minutes"] / 60
+            # Simple mode logic for manual
+            if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
+                mode = "intraday"
+            else:
+                mode = "after_hours"
+
+        # Update Next Run Time for UI
+        SYSTEM_CONFIG["next_run_time"] = SYSTEM_CONFIG["last_run_time"] + interval_seconds
 
         # Task 1: Analysis
-        if current_timestamp - last_analysis_time >= interval_seconds:
-            # Special check to avoid running during the 15:00-15:15 gap
-            if not (current_hour == 15 and current_minute < 15):
-                try:
-                    thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
-                    await asyncio.to_thread(execute_analysis, mode, lookback_hours)
-                    last_analysis_time = current_timestamp
-                except Exception as e:
-                    print(f"Scheduler error: {e}")
+        if SYSTEM_CONFIG["auto_analysis_enabled"]:
+            if current_timestamp - SYSTEM_CONFIG["last_run_time"] >= interval_seconds:
+                # Special check to avoid running during the 15:00-15:15 gap (only in smart mode)
+                should_run = True
+                if SYSTEM_CONFIG["use_smart_schedule"] and (current_hour == 15 and current_minute < 15):
+                    should_run = False
+                
+                if should_run:
+                    try:
+                        SYSTEM_CONFIG["current_status"] = f"Running {mode}..."
+                        # Update last_run_time BEFORE execution to prevent loop on error
+                        SYSTEM_CONFIG["last_run_time"] = current_timestamp
+                        
+                        thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
+                        await asyncio.to_thread(execute_analysis, mode, lookback_hours)
+                    except Exception as e:
+                        print(f"Scheduler error: {e}")
+                    finally:
+                        SYSTEM_CONFIG["current_status"] = "Idle"
+        else:
+             SYSTEM_CONFIG["current_status"] = "Paused"
         
         # Task 2: Refresh Quotes (Every 3 seconds)
         try:
