@@ -459,11 +459,122 @@ def get_tencent_data(codes):
         
     return stocks
 
+def get_eastmoney_data(codes):
+    """
+    从东方财富接口抓取数据 (最稳定，支持所有板块)
+    """
+    if not codes:
+        return []
+        
+    # 构造 secids
+    # sh -> 1.xxx, sz -> 0.xxx, bj -> 0.xxx
+    secids = []
+    code_map = {} # secid -> original_code
+    
+    for code in codes:
+        raw_code = code.replace('sh', '').replace('sz', '').replace('bj', '')
+        market = '1' if code.startswith('sh') else '0'
+        secid = f"{market}.{raw_code}"
+        secids.append(secid)
+        code_map[secid] = code
+        
+    # 分批请求，每次最多 100 个
+    stocks = []
+    batch_size = 90
+    
+    for i in range(0, len(secids), batch_size):
+        batch = secids[i:i+batch_size]
+        url = "http://push2.eastmoney.com/api/qt/ulist/get"
+        params = {
+            "secids": ",".join(batch),
+            "fields": "f12,f14,f2,f3,f4,f18,f15,f16,f17,f139", # 代码,名称,现价,涨幅,涨跌,昨收,最高,最低,开盘,市场
+            "invt": 2,
+            "fltt": 2,
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "_": int(time.time() * 1000)
+        }
+        
+        try:
+            resp = requests.get(url, params=params, timeout=5)
+            data = resp.json()
+            if not data.get('data') or not data['data'].get('diff'):
+                continue
+                
+            for item in data['data']['diff']:
+                # item: { "f12": "600519", "f14": "贵州茅台", ... }
+                # Need to map back to original code (sh/sz/bj)
+                # EastMoney returns f139 (market type)? 
+                # f139: 1=SH, 0=SZ/BJ
+                
+                raw_code = item['f12']
+                # Try to find matching code in our list
+                # Simple heuristic: check if sh{raw_code}, sz{raw_code}, bj{raw_code} is in codes
+                
+                # Better: use the secid we sent? 
+                # The response doesn't strictly return secid.
+                
+                # Reconstruct code
+                found_code = None
+                # Check watchlist map keys
+                if f"sh{raw_code}" in watchlist_map: found_code = f"sh{raw_code}"
+                elif f"sz{raw_code}" in watchlist_map: found_code = f"sz{raw_code}"
+                elif f"bj{raw_code}" in watchlist_map: found_code = f"bj{raw_code}"
+                
+                if not found_code:
+                    continue
+                    
+                current_price = item['f2']
+                if current_price == '-': current_price = 0
+                
+                prev_close = item['f18']
+                if prev_close == '-': prev_close = 0
+                
+                change_percent = item['f3']
+                if change_percent == '-': change_percent = 0
+                
+                # Calculate Limit Up
+                limit_up_price = round(prev_close * 1.1, 2) # Approx
+                
+                strategy_info = watchlist_map.get(found_code, {})
+                
+                stock_info = {
+                    "code": found_code,
+                    "name": item['f14'],
+                    "current": current_price,
+                    "change_percent": change_percent,
+                    "high": item['f15'],
+                    "open": item['f17'],
+                    "prev_close": prev_close,
+                    "limit_up_price": limit_up_price,
+                    "is_limit_up": current_price >= limit_up_price - 0.01 and change_percent > 0,
+                    "strategy": strategy_info.get("strategy_type", "Neutral"),
+                    "initial_score": strategy_info.get("initial_score", 0),
+                    "concept": strategy_info.get("concept", "-"),
+                    "seal_rate": strategy_info.get("seal_rate", 0),
+                    "broken_rate": strategy_info.get("broken_rate", 0),
+                    "next_day_premium": strategy_info.get("next_day_premium", 0),
+                    "limit_up_days": strategy_info.get("limit_up_days", 0)
+                }
+                stocks.append(stock_info)
+                
+        except Exception as e:
+            print(f"EastMoney Quote Error: {e}")
+            
+    return stocks
+
 def get_stock_quotes():
     """
-    获取股票行情，优先使用新浪，失败则使用腾讯
+    获取股票行情，优先使用东方财富 (最全)，其次新浪
     """
-    # 1. 尝试新浪
+    # 1. 尝试东方财富
+    try:
+        em_data = get_eastmoney_data(WATCH_LIST)
+        if len(em_data) >= len(WATCH_LIST) * 0.8:
+            return em_data
+    except Exception as e:
+        print(f"EastMoney source failed: {e}")
+
+    # 2. 尝试新浪
     try:
         sina_data = get_sina_data()
         # 简单验证数据完整性
@@ -472,7 +583,7 @@ def get_stock_quotes():
     except Exception as e:
         print(f"Sina source failed: {e}")
         
-    # 2. 尝试腾讯 (作为补充或备用)
+    # 3. 尝试腾讯 (作为补充或备用)
     print("Switching to Tencent data source...")
     return get_tencent_data(WATCH_LIST)
 

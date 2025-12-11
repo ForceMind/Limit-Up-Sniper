@@ -2,6 +2,8 @@ import requests
 import json
 import time
 from datetime import datetime
+import akshare as ak
+import pandas as pd
 
 # 临时过滤北证股票 (8开头, 4开头, 92开头)
 FILTER_BSE = False
@@ -25,7 +27,7 @@ def scan_intraday_limit_up(logger=None):
     if logger: logger("[*] 正在扫描盘中异动股 (数据源: 东方财富)...")
     print("[*] 正在扫描盘中异动股 (数据源: 东方财富)...")
     
-    url = "http://82.push2.eastmoney.com/api/qt/clist/get"
+    url = "http://push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": 1,
         "pz": 2000, # Increase to 2000
@@ -86,10 +88,12 @@ def scan_intraday_limit_up(logger=None):
                 
             # 2. 涨速过滤 (放宽要求，只要涨幅够高，不一定非要正在拉升)
             # 如果涨幅已经很高(>8% 或 >15%)，则忽略涨速要求
-            is_high_position = (is_20cm and change_percent > 15) or (not is_20cm and change_percent > 8)
+            # is_high_position = (is_20cm and change_percent > 15) or (not is_20cm and change_percent > 8)
             
-            if not is_high_position and speed < 0.5:
-                continue
+            # if not is_high_position and speed < 0.5:
+            #    continue
+            
+            # 只要涨幅达标(>5%)，全部纳入观察，不再强制要求涨速 (避免盘后或静默期无数据)
                 
             # 3. 排除 ST (名称带ST)
             if 'ST' in name:
@@ -119,44 +123,26 @@ def scan_intraday_limit_up(logger=None):
 
 def scan_limit_up_pool(logger=None):
     """
-    扫描已涨停的股票 (使用东方财富 clist 接口)
+    扫描已涨停的股票 (使用 AKShare 接口)
     """
-    if logger: logger("[*] 正在扫描已涨停股票...")
-    
-    # 使用 clist 接口作为主接口
-    url = "http://push2.eastmoney.com/api/qt/clist/get"
-    
-    params = {
-        "pn": 1,
-        "pz": 2000, # Increase to 2000
-        "po": 1,
-        "np": 1,
-        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": 2,
-        "invt": 2,
-        "fid": "f3", # 按涨幅排序
-        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048", # 沪深A股
-        "fields": "f12,f14,f3,f2,f100,f18,f15", # Code, Name, Change, Current, Industry, PrevClose, High
-        "_": int(time.time() * 1000)
-    }
+    if logger: logger("[*] 正在扫描已涨停股票 (AKShare)...")
     
     found_stocks = []
     
     try:
-        resp = requests.get(url, params=params, timeout=5)
-        data = resp.json()
-        if not data.get('data'):
+        # 使用 AKShare 获取涨停股池
+        # date 默认使用最新交易日
+        df = ak.stock_zt_pool_em(date=datetime.now().strftime("%Y%m%d"))
+        
+        if df is None or df.empty:
+            if logger: logger("[!] AKShare 返回数据为空")
             return []
             
-        stock_list = data['data']['diff']
-        
-        for s in stock_list:
-            change_percent = s['f3']
-            code = s['f12']
-            name = s['f14']
-            current = s['f2']
-            prev_close = s['f18']
-            high = s['f15']
+        for _, row in df.iterrows():
+            code = str(row['代码'])
+            name = str(row['名称'])
+            change_percent = round(float(row['涨跌幅']), 2)
+            current = round(float(row['最新价']), 2)
             
             # 0. 过滤北证
             if FILTER_BSE and is_bse_stock(code):
@@ -166,22 +152,57 @@ def scan_limit_up_pool(logger=None):
             if 'ST' in name:
                 continue
                 
-            # 1. 涨停判断
-            is_20cm = is_20cm_stock(code)
-            limit_ratio = 1.2 if is_20cm else 1.1
-            limit_up_price = round(prev_close * limit_ratio, 2)
-            
-            # print(f"DEBUG: {name} {current} {high} {limit_up_price}")
-            
-            # 允许 0.01 的误差
-            if current < limit_up_price - 0.01:
-                continue
-                
-            # 如果当前价格低于最高价，说明炸板了，不应在涨停池中
-            if current < high:
-                continue
-                
             # 格式化代码
+            if is_bse_stock(code):
+                full_code = f"bj{code}"
+            else:
+                full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+            
+            # 连板数
+            limit_days = str(row['连板数'])
+            reason = f"{limit_days}连板" if limit_days else "涨停"
+            
+            found_stocks.append({
+                "code": full_code,
+                "name": name,
+                "current": current,
+                "change_percent": change_percent,
+                "speed": 0, 
+                "time": str(row['首次封板时间']), 
+                "concept": str(row['所属行业']), 
+                "reason": reason,
+                "strategy": "LimitUp"
+            })
+            
+    except Exception as e:
+        if logger: logger(f"[!] 扫描涨停池失败: {e}")
+        
+    return found_stocks
+
+def scan_broken_limit_pool(logger=None):
+    """
+    扫描炸板股票 (使用 AKShare 接口)
+    """
+    # if logger: logger("[*] 正在扫描炸板股票 (AKShare)...")
+    
+    found_stocks = []
+    try:
+        # 使用 AKShare 获取炸板股池
+        df = ak.stock_zt_pool_zbgc_em(date=datetime.now().strftime("%Y%m%d"))
+        
+        if df is None or df.empty:
+            return []
+            
+        for _, row in df.iterrows():
+            code = str(row['代码'])
+            name = str(row['名称'])
+            change_percent = round(float(row['涨跌幅']), 2)
+            current = round(float(row['最新价']), 2)
+            high = round(float(row['涨停价']), 2)
+            
+            if FILTER_BSE and is_bse_stock(code): continue
+            if 'ST' in name: continue
+            
             if is_bse_stock(code):
                 full_code = f"bj{code}"
             else:
@@ -192,84 +213,12 @@ def scan_limit_up_pool(logger=None):
                 "name": name,
                 "current": current,
                 "change_percent": change_percent,
-                "speed": 0, 
-                "time": "-", # 无法获取首封时间
-                "concept": s.get('f100', '-'), 
-                "associated": "-" 
+                "time": str(row['首次封板时间']), 
+                "high": high,
+                "concept": str(row['所属行业']),
+                "associated": "-",
+                "amplitude": round(float(row['振幅']), 2) if '振幅' in row else 0
             })
-            
-    except Exception as e:
-        if logger: logger(f"[!] 扫描涨停池失败: {e}")
-        
-    return found_stocks
-
-def scan_broken_limit_pool(logger=None):
-    """
-    扫描炸板股票 (使用 clist 接口计算)
-    """
-    # if logger: logger("[*] 正在扫描炸板股票...")
-    
-    url = "http://push2.eastmoney.com/api/qt/clist/get"
-    
-    params = {
-        "pn": 1,
-        "pz": 2000, # Increase to 2000
-        "po": 1,
-        "np": 1,
-        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": 2,
-        "invt": 2,
-        "fid": "f3", 
-        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048",
-        "fields": "f12,f14,f3,f2,f15,f18,f100,f16", # Code, Name, Change, Current, High, PrevClose, Industry, Low
-        "_": int(time.time() * 1000)
-    }
-    
-    found_stocks = []
-    try:
-        resp = requests.get(url, params=params, timeout=5)
-        data = resp.json()
-        if not data.get('data'):
-            return []
-            
-        stock_list = data['data']['diff']
-        for s in stock_list:
-            code = s['f12']
-            name = s['f14']
-            change_percent = s['f3']
-            current = s['f2']
-            high = s['f15']
-            prev_close = s['f18']
-            
-            if FILTER_BSE and is_bse_stock(code): continue
-            if 'ST' in name: continue
-            
-            # Calculate Limit Up Price
-            is_20cm = is_20cm_stock(code)
-            limit_ratio = 1.2 if is_20cm else 1.1
-            limit_up_price = round(prev_close * limit_ratio, 2)
-            
-            # Check if High reached Limit Up (approx)
-            if high >= limit_up_price - 0.01:
-                # Check if Broken (Current < High)
-                # Use a small epsilon to avoid floating point issues
-                if current < high - 0.009:
-                    if is_bse_stock(code):
-                        full_code = f"bj{code}"
-                    else:
-                        full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
-                    
-                    found_stocks.append({
-                        "code": full_code,
-                        "name": name,
-                        "current": current,
-                        "change_percent": change_percent,
-                        "time": "-", # 无法获取炸板时间
-                        "high": high,
-                        "concept": s.get('f100', '-'),
-                        "associated": "-",
-                        "amplitude": round(((high - s.get('f16', 0)) / prev_close) * 100, 2) if s.get('f16') else 0
-                    })
     except Exception as e:
         if logger: logger(f"[!] 扫描炸板池失败: {e}")
         
