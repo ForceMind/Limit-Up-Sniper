@@ -6,6 +6,7 @@ import json
 import os
 import asyncio
 import time
+from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
 from news_analyzer import generate_watchlist, analyze_single_stock
@@ -98,10 +99,6 @@ async def update_market_pools_task():
             print(f"Pool update error: {e}")
         
         await asyncio.sleep(10) # Update every 10 seconds
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(update_market_pools_task())
 
 if not WATCH_LIST:
     WATCH_LIST = ['sh600519', 'sz002405', 'sz300059']
@@ -303,6 +300,8 @@ async def startup_event():
     asyncio.create_task(log_broadcaster())
     # Start background scheduler
     asyncio.create_task(scheduler_loop())
+    # Start market pool updater
+    asyncio.create_task(update_market_pools_task())
     
     # 启动时立即执行一次盘中扫描，确保列表不为空
     print("Startup: Running initial intraday scan...")
@@ -325,40 +324,98 @@ async def scheduler_loop():
     last_pool_update_time = 0
     
     while True:
-        current_time = time.time()
+        current_timestamp = time.time()
+        now = datetime.now()
+        current_hour = now.hour
+        current_minute = now.minute
         
-        # Task 1: Intraday Analysis (Every 60 seconds)
-        if current_time - last_analysis_time >= 60:
-            # Only run during trading hours (approx check)
-            # For simplicity, we run it always or check time
-            # Here we just run it.
-            try:
-                thread_logger(">>> 自动触发盘中突击分析...")
-                # Run in thread pool to avoid blocking async loop
-                await asyncio.to_thread(execute_analysis, "intraday")
-                last_analysis_time = current_time
-            except Exception as e:
-                print(f"Scheduler error: {e}")
+        # --- Schedule Logic ---
+        interval_seconds = 3600 # Default 1h
+        lookback_hours = 1
+        mode = "after_hours"
+        
+        # 09:30 - 15:00 (Trading)
+        if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
+            interval_seconds = 15 * 60 # 15 mins
+            lookback_hours = 0.25
+            mode = "intraday"
+            
+        # 15:00 - 15:15 (Wait)
+        elif current_hour == 15 and current_minute < 15:
+            interval_seconds = 999999 # Do not run
+            
+        # 15:15 - 18:00 (Post-market 1h)
+        elif current_hour == 15 and current_minute >= 15:
+             interval_seconds = 3600
+             lookback_hours = 1
+             mode = "after_hours"
+        elif 16 <= current_hour < 18:
+             interval_seconds = 3600
+             lookback_hours = 1
+             mode = "after_hours"
+             
+        # 18:00 - 23:00 (Evening 3h)
+        elif 18 <= current_hour < 23:
+             interval_seconds = 3 * 3600
+             lookback_hours = 3
+             mode = "after_hours"
+             
+        # 23:00 - 06:00 (Night 6h)
+        elif current_hour >= 23 or current_hour < 6:
+             interval_seconds = 6 * 3600
+             lookback_hours = 6
+             mode = "after_hours"
+             
+        # 06:00 - 08:30 (Morning 1h)
+        elif 6 <= current_hour < 8:
+             interval_seconds = 3600
+             lookback_hours = 1
+             mode = "after_hours"
+        elif current_hour == 8 and current_minute < 30:
+             interval_seconds = 3600
+             lookback_hours = 1
+             mode = "after_hours"
+             
+        # 08:30 - 09:30 (Pre-open 15m)
+        elif current_hour == 8 and current_minute >= 30:
+             interval_seconds = 15 * 60
+             lookback_hours = 0.25
+             mode = "after_hours"
+        elif current_hour == 9 and current_minute < 30:
+             interval_seconds = 15 * 60
+             lookback_hours = 0.25
+             mode = "after_hours"
+
+        # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
+        if current_hour == 15 and current_minute >= 15:
+             last_run_dt = datetime.fromtimestamp(last_analysis_time)
+             # If last run was today but before 15:15
+             if last_run_dt.date() == now.date() and (last_run_dt.hour < 15 or (last_run_dt.hour == 15 and last_run_dt.minute < 15)):
+                 interval_seconds = 0 # Force run
+
+        # Task 1: Analysis
+        if current_timestamp - last_analysis_time >= interval_seconds:
+            # Special check to avoid running during the 15:00-15:15 gap
+            if not (current_hour == 15 and current_minute < 15):
+                try:
+                    thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
+                    await asyncio.to_thread(execute_analysis, mode, lookback_hours)
+                    last_analysis_time = current_timestamp
+                except Exception as e:
+                    print(f"Scheduler error: {e}")
         
         # Task 2: Refresh Quotes (Every 3 seconds)
-        # Since frontend polls /api/stocks, we don't strictly need this for data flow,
-        # but user asked for "backend to refresh".
-        # We can fetch and broadcast to WS to be "real-time push"
         try:
-            # Fetch data
             stocks = await asyncio.to_thread(get_stock_quotes)
-            # Broadcast if needed (optional, but good for real-time)
-            # await manager.broadcast(json.dumps({"type": "quotes", "data": stocks}))
         except Exception as e:
             pass
             
         # Task 3: Update Limit Up Pool (Every 30 seconds)
-        # Use a timestamp check instead of modulo to be more reliable
-        if current_time - last_pool_update_time >= 30:
+        if current_timestamp - last_pool_update_time >= 30:
              await asyncio.to_thread(update_limit_up_pool_task)
-             last_pool_update_time = current_time
+             last_pool_update_time = current_timestamp
 
-        await asyncio.sleep(3)
+        await asyncio.sleep(5) # Check every 5 seconds
 
 def thread_logger(msg):
     """线程安全的 logger"""
@@ -371,11 +428,11 @@ async def run_analysis(background_tasks: BackgroundTasks, mode: str = Query("aft
     background_tasks.add_task(execute_analysis, mode)
     return {"status": "success", "message": f"{mode} analysis started in background"}
 
-def execute_analysis(mode="after_hours"):
+def execute_analysis(mode="after_hours", hours=None):
     try:
         mode_name = "盘后复盘" if mode == "after_hours" else "盘中突击"
-        thread_logger(f">>> 开始执行{mode_name}任务...")
-        generate_watchlist(logger=thread_logger, mode=mode)
+        thread_logger(f">>> 开始执行{mode_name}任务 (回溯{hours if hours else '默认'}小时)...")
+        generate_watchlist(logger=thread_logger, mode=mode, hours=hours)
         refresh_watchlist()
         thread_logger(f">>> {mode_name}任务完成，列表已更新。")
     except Exception as e:

@@ -255,6 +255,12 @@ def analyze_single_stock(stock_data, logger=None):
     concept = stock_data.get('concept', '')
     prompt_type = stock_data.get('promptType', 'default')
     
+    # Additional metrics for better analysis
+    turnover = stock_data.get('turnover', stock_data.get('metrics', {}).get('turnover', '未知'))
+    circ_value = stock_data.get('circulation_value', '未知')
+    if isinstance(circ_value, (int, float)) and circ_value > 0:
+        circ_value = f"{round(circ_value / 100000000, 2)}亿"
+    
     # 1. 尝试获取该股票的最新新闻 (模拟搜索)
     # 这里简单复用 get_cls_news 的逻辑，但针对特定关键词过滤
     # 实际生产中应该调用搜索引擎API或专门的新闻接口
@@ -271,21 +277,23 @@ def analyze_single_stock(stock_data, logger=None):
         prompt = f"""
 你是一位擅长竞价抢筹和超短线博弈的顶级游资。请针对股票【{name} ({code})】进行“竞价抢筹”维度的深度推演。
 
-【盘面数据】
+【今日盘面数据】(基于今日收盘或实时数据)
 - 现价: {price}
 - 涨幅: {change}%
+- 换手率: {turnover}%
+- 流通市值: {circ_value}
 - 概念: {concept}
-- 指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
+- 历史指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【核心分析逻辑】
 请重点回答以下问题（Chain of Thought）：
-1. **抢筹逻辑**: 为什么这只股票明天可能会涨？为什么现在是抢筹的时机？（结合题材热度、身位优势、主力资金意图）
-2. **预期差**: 市场可能忽略了什么？是否存在弱转强、卡位或补涨的预期？
+1. **抢筹逻辑**: 基于今日的表现（如涨停、烂板、大长腿等），为什么这只股票明天竞价可能会有溢价或弱转强？
+2. **预期差**: 市场可能忽略了什么？是否存在卡位、补涨或穿越的预期？
 3. **风险收益比**: 如果明天竞价买入，盈亏比如何？
 
 【最终输出】
 请以 Markdown 格式输出简报：
-### 1. 核心抢筹理由 (Why Buy Now?)
+### 1. 核心抢筹理由 (Why Buy Tomorrow?)
 (直击痛点，说明上涨预期)
 
 ### 2. 预期差与博弈点
@@ -302,19 +310,21 @@ def analyze_single_stock(stock_data, logger=None):
         prompt = f"""
 你是一位拥有20年经验的A股顶级游资操盘手，精通情绪周期、题材挖掘和技术面分析。请对股票【{name} ({code})】进行全方位的深度推演。
 
-【盘面数据】
+【今日盘面数据】
 - 现价: {price}
 - 涨跌幅: {change}%
+- 换手率: {turnover}%
+- 流通市值: {circ_value}
 - 核心概念: {concept}
 - 辅助指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【分析逻辑】
 请按照以下步骤进行思考（Chain of Thought），并输出最终报告：
 
-1. **题材定性**: 该股票的核心逻辑是什么？是否属于当前市场的主线题材（如AI、低空经济、华为等）？是龙头、中军还是跟风？
-2. **情绪周期**: 当前市场情绪处于什么阶段（混沌、发酵、高潮、退潮）？该股在当前周期中的地位如何？
-3. **技术面与盘口**: 结合涨跌幅和指标，判断主力意图（洗盘、出货、吸筹、拉升）。
-4. **风险提示**: 有无潜在的利空或抛压风险（如减持、监管、前期套牢盘）。
+1. **题材定性**: 该股票的核心逻辑是什么？是否属于当前市场的主线题材？
+2. **情绪周期**: 当前市场情绪处于什么阶段？该股在当前周期中的地位如何？
+3. **技术面与盘口**: 结合涨跌幅、换手率和流通盘大小，判断主力意图（洗盘、出货、吸筹、拉升）。
+4. **风险提示**: 有无潜在的利空或抛压风险。
 
 【最终输出】
 请以 Markdown 格式输出一份简报，包含以下章节：
@@ -371,7 +381,7 @@ def analyze_single_stock(stock_data, logger=None):
     except Exception as e:
         return f"分析失败: {str(e)}"
 
-def generate_watchlist(logger=None, mode="after_hours"):
+def generate_watchlist(logger=None, mode="after_hours", hours=None):
     msg = f"[-] 启动{mode}分析 (AI Powered)..."
     print(msg)
     if logger: logger(msg)
@@ -381,8 +391,10 @@ def generate_watchlist(logger=None, mode="after_hours"):
     if logger: logger(f"[-] 市场数据获取完成。")
 
     # 1. 获取新闻
-    # 盘中模式只看最近 2 小时，盘后模式看 12 小时
-    hours = 2 if mode == "intraday" else 12
+    # 如果未指定 hours，则使用默认逻辑
+    if hours is None:
+        hours = 2 if mode == "intraday" else 12
+        
     news_items = get_cls_news(hours=hours, logger=logger) 
     msg = f"[-] 获取到 {len(news_items)} 条有效资讯 (最近 {hours} 小时)。"
     print(msg)

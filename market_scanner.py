@@ -38,7 +38,7 @@ def scan_intraday_limit_up(logger=None):
         "invt": 2,
         "fid": "f3", # 按涨幅排序
         "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048", # 沪深A股
-        "fields": "f12,f14,f3,f22,f8,f2,f18", # 代码,名称,涨幅,涨速,换手,现价,昨收
+        "fields": "f12,f14,f3,f22,f8,f2,f18,f21", # 代码,名称,涨幅,涨速,换手,现价,昨收,流通市值
         "_": int(time.time() * 1000)
     }
     
@@ -60,6 +60,7 @@ def scan_intraday_limit_up(logger=None):
             name = s['f14']
             current = s['f2']
             prev_close = s['f18']
+            circ_mv = s.get('f21', 0) # 流通市值
             
             # 0. 过滤北证
             if FILTER_BSE and is_bse_stock(code):
@@ -111,7 +112,9 @@ def scan_intraday_limit_up(logger=None):
                 "concept": "盘中异动",
                 "reason": f"盘中突击: 涨幅{change_percent}%, 涨速{speed}%",
                 "score": 8.0 + (speed * 0.5), # 涨速越快分越高
-                "strategy": "LimitUp"
+                "strategy": "LimitUp",
+                "circulation_value": circ_mv, # 流通市值
+                "turnover": turnover # 换手率
             })
             
             if logger: logger(f"    [+] 发现异动: {name} 涨幅:{change_percent}% 涨速:{speed}%")
@@ -143,6 +146,8 @@ def scan_limit_up_pool(logger=None):
             name = str(row['名称'])
             change_percent = round(float(row['涨跌幅']), 2)
             current = round(float(row['最新价']), 2)
+            turnover = round(float(row['换手率']), 2) if '换手率' in row else 0
+            circ_mv = float(row['流通市值']) if '流通市值' in row else 0
             
             # 0. 过滤北证
             if FILTER_BSE and is_bse_stock(code):
@@ -171,7 +176,9 @@ def scan_limit_up_pool(logger=None):
                 "time": str(row['首次封板时间']), 
                 "concept": str(row['所属行业']), 
                 "reason": reason,
-                "strategy": "LimitUp"
+                "strategy": "LimitUp",
+                "circulation_value": circ_mv,
+                "turnover": turnover
             })
             
     except Exception as e:
@@ -199,6 +206,8 @@ def scan_broken_limit_pool(logger=None):
             change_percent = round(float(row['涨跌幅']), 2)
             current = round(float(row['最新价']), 2)
             high = round(float(row['涨停价']), 2)
+            turnover = round(float(row['换手率']), 2) if '换手率' in row else 0
+            circ_mv = float(row['流通市值']) if '流通市值' in row else 0
             
             if FILTER_BSE and is_bse_stock(code): continue
             if 'ST' in name: continue
@@ -217,7 +226,9 @@ def scan_broken_limit_pool(logger=None):
                 "high": high,
                 "concept": str(row['所属行业']),
                 "associated": "-",
-                "amplitude": round(float(row['振幅']), 2) if '振幅' in row else 0
+                "amplitude": round(float(row['振幅']), 2) if '振幅' in row else 0,
+                "circulation_value": circ_mv,
+                "turnover": turnover
             })
     except Exception as e:
         if logger: logger(f"[!] 扫描炸板池失败: {e}")
@@ -242,6 +253,9 @@ def get_market_overview(logger=None):
             "limit_up_count": 0,
             "limit_down_count": 0,
             "broken_count": 0,
+            "up_count": 0,
+            "down_count": 0,
+            "flat_count": 0,
             "total_volume": 0, # 亿
             "sentiment": "Neutral",
             "suggestion": "观察"
@@ -297,7 +311,52 @@ def get_market_overview(logger=None):
     except Exception as e:
         if logger: logger(f"[!] 获取指数失败: {e}")
 
-    # 2. 获取涨停/炸板数据 (东财)
+    # 2. 获取涨跌分布 (东财全A扫描)
+    try:
+        url = "http://push2.eastmoney.com/api/qt/clist/get"
+        params = {
+            "pn": 1,
+            "pz": 6000, # 获取全部
+            "po": 1,
+            "np": 1,
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": 2,
+            "invt": 2,
+            "fid": "f3",
+            "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23", # 沪深A股
+            "fields": "f3", # 只取涨跌幅
+            "_": int(time.time() * 1000)
+        }
+        resp = requests.get(url, params=params, timeout=5)
+        data = resp.json()
+        if data.get('data') and data['data'].get('diff'):
+            stocks = data['data']['diff']
+            up = 0
+            down = 0
+            flat = 0
+            limit_down = 0
+            
+            for s in stocks:
+                chg = s['f3']
+                if chg > 0:
+                    up += 1
+                elif chg < 0:
+                    down += 1
+                    # 粗略估算跌停: < -9.5%
+                    if chg < -9.5:
+                        limit_down += 1
+                else:
+                    flat += 1
+            
+            overview["stats"]["up_count"] = up
+            overview["stats"]["down_count"] = down
+            overview["stats"]["flat_count"] = flat
+            overview["stats"]["limit_down_count"] = limit_down
+            
+    except Exception as e:
+        if logger: logger(f"[!] 获取涨跌分布失败: {e}")
+
+    # 3. 获取涨停/炸板数据 (东财)
     try:
         # 直接使用通用接口获取数据，不再尝试失效的专用接口
         zt_list = scan_limit_up_pool(logger)

@@ -131,7 +131,7 @@
 
         <!-- Market Sentiment Dashboard -->
         <div class="mb-4 px-2 md:px-4" v-if="marketSentiment">
-            <div class="bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs md:text-sm shadow-lg">
+            <div class="bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-2 md:grid-cols-5 gap-4 text-xs md:text-sm shadow-lg">
                 <!-- Indices -->
                 <div class="col-span-2 md:col-span-2 flex items-center justify-around border-r border-gray-200 dark:border-gray-700 pr-4">
                     <div v-for="idx in marketSentiment.indices" :key="idx.name" class="flex flex-col items-center">
@@ -144,18 +144,34 @@
                     </div>
                 </div>
                 
-                <!-- Stats -->
-                <div class="col-span-1 md:col-span-1 flex items-center justify-around border-r border-gray-200 dark:border-gray-700 pr-4">
-                    <div class="flex flex-col items-center">
+                <!-- Limit Stats -->
+                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-4">
+                    <div class="flex justify-between items-center">
                         <span class="text-gray-500 dark:text-gray-400 text-[10px]">涨停</span>
-                        <span class="text-red-500 font-bold text-base">{{ marketSentiment.stats.limit_up_count }}</span>
+                        <span class="text-red-500 font-bold">{{ marketSentiment.stats.limit_up_count }}</span>
                     </div>
-                    <div class="flex flex-col items-center">
+                    <div class="flex justify-between items-center">
                         <span class="text-gray-500 dark:text-gray-400 text-[10px]">炸板</span>
-                        <span class="text-green-500 font-bold text-base">{{ marketSentiment.stats.broken_count }}</span>
+                        <span class="text-green-500 font-bold">{{ marketSentiment.stats.broken_count }}</span>
                     </div>
-                    <div class="flex flex-col items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">总成交</span>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">跌停</span>
+                        <span class="text-green-700 dark:text-green-400 font-bold">{{ marketSentiment.stats.limit_down_count || '-' }}</span>
+                    </div>
+                </div>
+
+                <!-- Breadth Stats -->
+                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">上涨</span>
+                        <span class="text-red-500 font-bold">{{ marketSentiment.stats.up_count || '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">下跌</span>
+                        <span class="text-green-500 font-bold">{{ marketSentiment.stats.down_count || '-' }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">成交</span>
                         <span class="text-blue-500 dark:text-blue-400 font-bold">{{ marketSentiment.stats.total_volume }}亿</span>
                     </div>
                 </div>
@@ -208,46 +224,52 @@
                 <div class="flex-1 overflow-auto relative">
                     <div class="min-w-[800px]">
                         <!-- Table Header -->
-                        <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
-                            <div class="col-span-0.5">排名</div>
-                            <div class="col-span-1">代码</div>
-                            <div class="col-span-1.5">名称</div>
-                            <div class="col-span-1 text-right">现价</div>
-                            <div class="col-span-1 text-right">涨幅</div>
-                            <div class="col-span-3 text-center">板块/概念</div>
-                            <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="溢价率: 涨停次日平均高开幅度">溢价 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right">评分</div>
+                        <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
+                             style="grid-template-columns: 30px 60px 70px 60px 60px 60px 1fr 45px 45px 45px 45px;">
+                            <div class="">排名</div>
+                            <div class="">代码</div>
+                            <div class="">名称</div>
+                            <div class="text-right">现价</div>
+                            <div class="text-right">涨幅</div>
+                            <div class="text-right">流通</div>
+                            <div class="text-center">板块/概念</div>
+                            <div class="text-right cursor-help" title="晋级率">晋级</div>
+                            <div class="text-right cursor-help" title="首炸率">首炸</div>
+                            <div class="text-right cursor-help" title="溢价率">溢价</div>
+                            <div class="text-right">评分</div>
                         </div>
 
                         <!-- Scrollable List -->
                         <div class="p-2 space-y-1">
                             <div v-for="(stock, index) in aggressiveStocks" :key="stock.code" 
-                                 class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-500/20 grid grid-cols-12 gap-2 items-center px-2 py-2">
+                                 class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-500/20 grid gap-2 items-center px-2 py-2"
+                                 style="grid-template-columns: 30px 60px 70px 60px 60px 60px 1fr 45px 45px 45px 45px;">
                                 
-                                <div class="col-span-1 font-mono text-gray-500 text-xs">#{{ index + 1 }}</div>
-                                <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
-                                <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-purple-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                <div class="font-mono text-gray-500 text-xs">#{{ index + 1 }}</div>
+                                <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
+                                <div class="font-bold truncate sticky left-0 z-20 bg-purple-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                     <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                 </div>
-                                <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
-                                <div class="col-span-1 text-right font-bold" 
+                                <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
+                                <div class="text-right font-bold" 
                                      :class="getColorClass(stock.change_percent)">
                                     {{ stock.change_percent }}%
                                 </div>
-                                <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
-                                    <span>{{ stock.concept }}</span>
-                                    <button @click.stop="analyzeStock(stock, 'aggressive')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
+                                <div class="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                                    {{ stock.circulation_value ? (stock.circulation_value / 100000000).toFixed(1) + '亿' : '-' }}
+                                </div>
+                                <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
+                                    <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
+                                    <button @click.stop="analyzeStock(stock, 'aggressive')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                         🤖
                                     </button>
                                 </div>
                                 <!-- Metrics -->
-                                <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
-                                <div class="col-span-1 text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
-                                <div class="col-span-1 text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
+                                <div class="text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
+                                <div class="text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
+                                <div class="text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
 
-                                <div class="col-span-1 text-right text-purple-600 dark:text-purple-400 font-bold">{{ stock.initial_score }}</div>
+                                <div class="text-right text-purple-600 dark:text-purple-400 font-bold">{{ stock.initial_score }}</div>
                             </div>
                             <div v-if="aggressiveStocks.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无竞价目标</div>
                         </div>
@@ -272,48 +294,54 @@
                 <div class="flex-1 overflow-auto relative">
                     <div class="min-w-[800px]">
                         <!-- Table Header -->
-                        <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
-                            <div class="col-span-1">代码</div>
-                            <div class="col-span-1">名称</div>
-                            <div class="col-span-3 text-center">板块/概念</div>
-                            <div class="col-span-1 text-right">现价</div>
-                            <div class="col-span-1 text-right">涨幅</div>
-                            <div class="col-span-1 text-right">涨速</div>
-                            <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="溢价率: 涨停次日平均高开幅度">溢价 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right">连板</div>
+                        <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
+                             style="grid-template-columns: 60px 70px 1fr 60px 60px 60px 60px 45px 45px 45px 45px;">
+                            <div class="">代码</div>
+                            <div class="">名称</div>
+                            <div class="text-center">板块/概念</div>
+                            <div class="text-right">现价</div>
+                            <div class="text-right">涨幅</div>
+                            <div class="text-right">涨速</div>
+                            <div class="text-right">流通</div>
+                            <div class="text-right cursor-help" title="晋级率">晋级</div>
+                            <div class="text-right cursor-help" title="首炸率">首炸</div>
+                            <div class="text-right cursor-help" title="溢价率">溢价</div>
+                            <div class="text-right">连板</div>
                         </div>
 
                         <!-- List -->
                         <div class="p-2 space-y-1">
                             <transition-group name="list" tag="div" class="space-y-1">
                                 <div v-for="(stock, index) in limitUpStocks" :key="stock.code" 
-                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2"
-                                     :class="getRowHighlightClass(stock)">
+                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
+                                     :class="getRowHighlightClass(stock)"
+                                     style="grid-template-columns: 60px 70px 1fr 60px 60px 60px 60px 45px 45px 45px 45px;">
                                     
-                                    <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
-                                    <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
+                                    <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
+                                    <div class="font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
                                         <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                     </div>
-                                    <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
-                                        <span>{{ stock.concept }}</span>
-                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
+                                    <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
+                                        <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
+                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                             🤖
                                         </button>
                                     </div>
-                                    <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
-                                    <div class="col-span-1 text-right font-bold" :class="getColorClass(stock.change_percent)">
+                                    <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
+                                    <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
                                         {{ stock.change_percent }}%
                                     </div>
-                                    <div class="col-span-1 text-right text-yellow-600 dark:text-yellow-500 font-mono text-xs">
+                                    <div class="text-right text-yellow-600 dark:text-yellow-500 font-mono text-xs">
                                         {{ stock.speed }}%
                                     </div>
+                                    <div class="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                                        {{ stock.circulation_value ? (stock.circulation_value / 100000000).toFixed(1) + '亿' : '-' }}
+                                    </div>
                                     <!-- Metrics -->
-                                    <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
+                                    <div class="text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
+                                    <div class="text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
+                                    <div class="text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
+                                    <div class="text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
                                 </div>
                             </transition-group>
                             <div v-if="limitUpStocks.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无盘中目标</div>
@@ -324,26 +352,28 @@
                             <div class="px-3 py-1 text-xs text-gray-500 font-bold">已剔除 / 变弱 (Discarded)</div>
                             <div class="p-2 space-y-1 opacity-60 grayscale hover:grayscale-0 transition-all">
                                 <div v-for="(stock, index) in discardedStocks" :key="stock.code" 
-                                     class="rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-3 py-2 bg-gray-100 dark:bg-gray-800/30">
+                                     class="rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-gray-100 dark:bg-gray-800/30"
+                                     style="grid-template-columns: 60px 70px 1fr 60px 60px 60px 45px 45px 45px 45px;">
                                     
-                                    <div class="col-span-1 font-mono text-gray-500 dark:text-gray-600 text-xs">-</div>
-                                    <div class="col-span-1 text-gray-500 text-base font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
-                                    <div class="col-span-2 font-bold truncate text-gray-500">
+                                    <div class="text-gray-500 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
+                                    <div class="font-bold truncate text-gray-500">
                                         <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline">{{ stock.name }}</a>
                                     </div>
-                                    <div class="col-span-1 text-right font-mono text-gray-500">{{ stock.current.toFixed(2) }}</div>
-                                    <div class="col-span-1 text-right font-bold" :class="getColorClass(stock.change_percent)">
+                                    <div class="text-xs text-gray-500 truncate" :title="stock.news_summary || stock.concept">
+                                        {{ stock.news_summary || stock.concept }}
+                                    </div>
+                                    <div class="text-right font-mono text-gray-500">{{ stock.current.toFixed(2) }}</div>
+                                    <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
                                         {{ stock.change_percent }}%
                                     </div>
-                                    <div class="col-span-1 text-right text-gray-500 dark:text-gray-600 font-mono text-xs">
+                                    <div class="text-right text-gray-500 dark:text-gray-600 font-mono text-xs">
                                         {{ stock.speed }}%
                                     </div>
-                                    <!-- Metrics -->
-                                    <div class="col-span-4 text-xs text-gray-500 truncate pl-4">{{ stock.news_summary }}</div>
-                                    
-                                    <div class="col-span-1 text-right font-bold text-gray-500 dark:text-gray-600">
-                                        -
-                                    </div>
+                                    <!-- Metrics Placeholders -->
+                                    <div class="text-right text-xs text-gray-400">-</div>
+                                    <div class="text-right text-xs text-gray-400">-</div>
+                                    <div class="text-right text-xs text-gray-400">-</div>
+                                    <div class="text-right text-xs text-gray-400">-</div>
                                 </div>
                             </div>
                         </div>
@@ -377,51 +407,57 @@
                 <div class="flex-1 overflow-auto relative">
                     <div class="min-w-[800px]">
                         <!-- Table Header -->
-                        <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
-                            <div class="col-span-1">代码</div>
-                            <div class="col-span-1">名称</div>
-                            <div class="col-span-3 text-center">板块/概念</div>
-                            <div class="col-span-1 text-right">现价</div>
-                            <div class="col-span-1 text-right">涨幅</div>
-                            <div class="col-span-1 text-right">涨速</div>
-                            <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right cursor-help" title="溢价率: 涨停次日平均高开幅度">溢价 <span class="text-[10px]">?</span></div>
-                            <div class="col-span-1 text-right">连板</div>
+                        <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
+                             style="grid-template-columns: 60px 70px 1fr 60px 60px 60px 60px 45px 45px 45px 45px;">
+                            <div class="">代码</div>
+                            <div class="">名称</div>
+                            <div class="text-center">板块/概念</div>
+                            <div class="text-right">现价</div>
+                            <div class="text-right">涨幅</div>
+                            <div class="text-right">涨速</div>
+                            <div class="text-right">流通</div>
+                            <div class="text-right cursor-help" title="晋级率">晋级</div>
+                            <div class="text-right cursor-help" title="首炸率">首炸</div>
+                            <div class="text-right cursor-help" title="溢价率">溢价</div>
+                            <div class="text-right">连板</div>
                         </div>
 
                         <!-- List -->
                         <div class="p-2 space-y-1">
                             <transition-group name="list" tag="div" class="space-y-1">
                                 <div v-for="(stock, index) in manualStocks" :key="stock.code" 
-                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2"
-                                     :class="getRowHighlightClass(stock)">
+                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
+                                     :class="getRowHighlightClass(stock)"
+                                     style="grid-template-columns: 60px 70px 1fr 60px 60px 60px 60px 45px 45px 45px 45px;">
                                     
-                                    <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold flex items-center gap-1">
+                                    <div class="text-gray-900 dark:text-gray-300 text-sm font-bold flex items-center gap-1">
                                         <button v-if="isEditMode" @click.stop="removeStock(stock)" class="text-red-500 hover:text-red-700 font-bold px-1">×</button>
                                         {{ stock.code.replace('sh', '').replace('sz', '') }}
                                     </div>
-                                    <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
+                                    <div class="font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
                                         <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                     </div>
-                                    <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
-                                        <span>{{ stock.concept }}</span>
-                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
+                                    <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
+                                        <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
+                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                             🤖
                                         </button>
                                     </div>
-                                    <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
-                                    <div class="col-span-1 text-right font-bold" :class="getColorClass(stock.change_percent)">
+                                    <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
+                                    <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
                                         {{ stock.change_percent }}%
                                     </div>
-                                    <div class="col-span-1 text-right text-yellow-600 dark:text-yellow-500 font-mono text-xs">
+                                    <div class="text-right text-yellow-600 dark:text-yellow-500 font-mono text-xs">
                                         {{ stock.speed }}%
                                     </div>
+                                    <div class="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                                        {{ stock.circulation_value ? (stock.circulation_value / 100000000).toFixed(1) + '亿' : '-' }}
+                                    </div>
                                     <!-- Metrics -->
-                                    <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
-                                    <div class="col-span-1 text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
+                                    <div class="text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
+                                    <div class="text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
+                                    <div class="text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
+                                    <div class="text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
 
                                 </div>
                             </transition-group>
@@ -454,51 +490,57 @@
                     <div class="flex-1 overflow-auto relative" v-show="!isMobile || activePoolTab === 'limit_up'">
                         <div class="min-w-[800px]">
                             <!-- Table Header -->
-                            <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
-                                <div class="col-span-1">代码</div>
-                                <div class="col-span-1">名称</div>
-                                <div class="col-span-1 text-right">现价</div>
-                                <div class="col-span-1 text-right">涨幅</div>
-                                <div class="col-span-1 text-right">首封时间</div>
-                                <div class="col-span-2">概念</div>
-                                <div class="col-span-1">关联</div>
-                                <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
-                                <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
-                                <div class="col-span-1 text-right cursor-help" title="溢价率: 涨停次日平均高开幅度">溢价 <span class="text-[10px]">?</span></div>
-                                <div class="col-span-1 text-right">连板</div>
+                            <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
+                                 style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
+                                <div class="">代码</div>
+                                <div class="">名称</div>
+                                <div class="text-right">现价</div>
+                                <div class="text-right">涨幅</div>
+                                <div class="text-right">首封时间</div>
+                                <div class="text-right">流通</div>
+                                <div class="">概念</div>
+                                <div class="">关联</div>
+                                <div class="text-right cursor-help" title="晋级率">晋级</div>
+                                <div class="text-right cursor-help" title="首炸率">首炸</div>
+                                <div class="text-right cursor-help" title="溢价率">溢价</div>
+                                <div class="text-right">连板</div>
                             </div>
 
                             <!-- List -->
                             <div class="p-2 space-y-1">
                                 <transition-group name="list" tag="div" class="space-y-1">
                                     <div v-for="(stock, index) in filteredLimitUpPool" :key="stock.code" 
-                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2 bg-red-50 dark:bg-red-900/10">
+                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-red-50 dark:bg-red-900/10"
+                                         style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
                                         
-                                        <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
-                                        <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-red-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                        <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
+                                        <div class="font-bold truncate sticky left-0 z-20 bg-red-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                             <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '').replace('bj', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                         </div>
-                                        <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
-                                        <div class="col-span-1 text-right font-bold text-red-600 dark:text-red-500">
+                                        <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
+                                        <div class="text-right font-bold text-red-600 dark:text-red-500">
                                             {{ stock.change_percent }}%
                                         </div>
-                                        <div class="col-span-1 text-right text-gray-500 dark:text-gray-400 text-xs">
+                                        <div class="text-right text-gray-500 dark:text-gray-400 text-xs">
                                             {{ stock.time }}
                                         </div>
-                                        <div class="col-span-2 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
-                                            <span class="truncate" :title="stock.concept">{{ stock.concept }}</span>
+                                        <div class="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                                            {{ stock.circulation_value ? (stock.circulation_value / 100000000).toFixed(1) + '亿' : '-' }}
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 overflow-hidden">
+                                            <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
                                             <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
                                             </button>
                                         </div>
-                                        <div class="col-span-1 text-xs text-gray-500 truncate" :title="stock.associated">
+                                        <div class="text-xs text-gray-500 truncate" :title="stock.associated">
                                             {{ stock.associated }}
                                         </div>
                                         <!-- Metrics -->
-                                        <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
+                                        <div class="text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
+                                        <div class="text-right text-xs text-green-600 dark:text-green-400">{{ stock.broken_rate || '-' }}</div>
+                                        <div class="text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.next_day_premium || '-' }}</div>
+                                        <div class="text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
                                     </div>
                                 </transition-group>
                                 <div v-if="limitUpPool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无涨停股票</div>
@@ -525,51 +567,57 @@
                     <div class="flex-1 overflow-auto relative" v-show="!isMobile || activePoolTab === 'broken'">
                         <div class="min-w-[800px]">
                             <!-- Table Header -->
-                            <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
-                                <div class="col-span-1">代码</div>
-                                <div class="col-span-1">名称</div>
-                                <div class="col-span-1 text-right">现价</div>
-                                <div class="col-span-1 text-right">涨幅</div>
-                                <div class="col-span-1 text-right">首次炸板</div>
-                                <div class="col-span-2">概念</div>
-                                <div class="col-span-1">关联</div>
-                                <div class="col-span-1 text-right">回封率</div>
-                                <div class="col-span-1 text-right">振幅</div>
-                                <div class="col-span-1 text-right">换手</div>
-                                <div class="col-span-1 text-right">连板</div>
+                            <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
+                                 style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
+                                <div class="">代码</div>
+                                <div class="">名称</div>
+                                <div class="text-right">现价</div>
+                                <div class="text-right">涨幅</div>
+                                <div class="text-right">首次炸板</div>
+                                <div class="text-right">流通</div>
+                                <div class="">概念</div>
+                                <div class="">关联</div>
+                                <div class="text-right">回封率</div>
+                                <div class="text-right">振幅</div>
+                                <div class="text-right">换手</div>
+                                <div class="text-right">连板</div>
                             </div>
 
                             <!-- List -->
                             <div class="p-2 space-y-1">
                                 <transition-group name="list" tag="div" class="space-y-1">
                                     <div v-for="(stock, index) in filteredBrokenLimitPool" :key="stock.code" 
-                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2 bg-gray-50 dark:bg-gray-900/10">
+                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-gray-50 dark:bg-gray-900/10"
+                                         style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
                                         
-                                        <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
-                                        <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                        <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
+                                        <div class="font-bold truncate sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                             <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '').replace('bj', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                         </div>
-                                        <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
-                                        <div class="col-span-1 text-right font-bold" :class="getColorClass(stock.change_percent)">
+                                        <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
+                                        <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
                                             {{ stock.change_percent }}%
                                         </div>
-                                        <div class="col-span-1 text-right text-gray-500 dark:text-gray-400 text-xs">
+                                        <div class="text-right text-gray-500 dark:text-gray-400 text-xs">
                                             {{ stock.time }}
                                         </div>
-                                        <div class="col-span-2 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
-                                            <span class="truncate" :title="stock.concept">{{ stock.concept }}</span>
+                                        <div class="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                                            {{ stock.circulation_value ? (stock.circulation_value / 100000000).toFixed(1) + '亿' : '-' }}
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 overflow-hidden">
+                                            <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
                                             <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
                                             </button>
                                         </div>
-                                        <div class="col-span-1 text-xs text-gray-500 truncate" :title="stock.associated">
+                                        <div class="text-xs text-gray-500 truncate" :title="stock.associated">
                                             {{ stock.associated }}
                                         </div>
                                         <!-- Metrics -->
-                                        <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-gray-600 dark:text-gray-400">{{ stock.amplitude || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.turnover || '-' }}</div>
-                                        <div class="col-span-1 text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
+                                        <div class="text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
+                                        <div class="text-right text-xs text-gray-600 dark:text-gray-400">{{ stock.amplitude || '-' }}</div>
+                                        <div class="text-right text-xs text-blue-600 dark:text-blue-300">{{ stock.turnover || '-' }}</div>
+                                        <div class="text-right text-xs text-purple-600 dark:text-purple-400 font-bold">{{ stock.limit_up_days || '-' }}</div>
                                     </div>
                                 </transition-group>
                                 <div v-if="brokenLimitPool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无炸板股票</div>
@@ -789,6 +837,9 @@
                 }
             },
             methods: {
+                toggleConcept(stock) {
+                    stock.showFullConcept = !stock.showFullConcept;
+                },
                 checkBoardVisibility(code) {
                     // Remove prefix if exists
                     const rawCode = code.replace(/^(sh|sz|bj)/, '');
@@ -958,7 +1009,12 @@
                     return 'text-gray-500 dark:text-gray-400';
                 },
                 getRowHighlightClass(stock) {
-                    if (stock.strategy === 'LimitUp' && stock.change_percent > 8) {
+                    // Stop blinking if market is closed (after 15:00)
+                    const now = new Date();
+                    const hours = now.getHours();
+                    const isMarketClosed = hours >= 15;
+
+                    if (stock.strategy === 'LimitUp' && stock.change_percent > 8 && !isMarketClosed) {
                         return 'bg-red-900/40 animate-pulse border-red-500';
                     }
                     return 'border-gray-800';
