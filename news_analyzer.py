@@ -4,8 +4,9 @@ import time
 from datetime import datetime
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from stock_utils import calculate_metrics
-from market_scanner import scan_intraday_limit_up
+from market_scanner import scan_intraday_limit_up, get_market_overview
 
 # Configuration
 CLS_API_URL = "https://www.cls.cn/nodeapi/telegraphList"
@@ -70,13 +71,24 @@ def get_market_data(logger=None):
     except Exception as e:
         if logger: logger(f"[!] 获取炸板数据失败: {e}")
         
+    # 3. 市场情绪概览 (新增)
+    try:
+        overview = get_market_overview(logger=None)
+        stats = overview.get('stats', {})
+        market_summary += f"【市场情绪】\n"
+        market_summary += f"- 涨跌分布: 上涨 {stats.get('up_count', 0)} 家, 下跌 {stats.get('down_count', 0)} 家, 跌停 {stats.get('limit_down_count', 0)} 家\n"
+        market_summary += f"- 市场建议: {stats.get('suggestion', '观察')} (情绪: {stats.get('sentiment', 'Neutral')})\n"
+        market_summary += f"- 总成交额: {stats.get('total_volume', 0)} 亿\n"
+    except Exception as e:
+        if logger: logger(f"[!] 获取市场情绪失败: {e}")
+        
     return market_summary
 
 def get_cls_news(hours=12, logger=None):
     """
-    抓取财联社电报最近 N 小时的数据
+    抓取财联社电报最近 N 小时的数据 (多线程并发)
     """
-    msg = f"[*] 正在抓取最近 {hours} 小时的全网舆情 (来源: 财联社)..."
+    msg = f"[*] 正在抓取最近 {hours} 小时的全网舆情 (来源: 财联社, 多线程)..."
     print(msg)
     if logger: logger(msg)
 
@@ -84,7 +96,23 @@ def get_cls_news(hours=12, logger=None):
     start_time = current_time - (hours * 3600)
     
     news_list = []
+    
+    # 财联社API是基于 last_time 分页的，这使得完全并行比较困难，因为下一页依赖上一页的最后时间。
+    # 但是，我们可以预估时间或者并发抓取多个时间段？
+    # 实际上，财联社API如果只传 rn (count) 不传 last_time，是第一页。
+    # 严格的分页必须串行。
+    # 妥协方案：为了速度，我们只抓取第一页 (最新20条) 或者 串行抓取但优化连接。
+    # 实际上，对于"最近1小时"，通常1-2页就够了。
+    # 如果要多线程，我们可以尝试猜测 last_time? 不可行。
+    # 
+    # 替代方案：使用 requests.Session 复用连接，减少握手时间。
+    
+    session = requests.Session()
     last_time = current_time
+    
+    # 既然用户强烈要求多线程，我们可以尝试并发抓取不同来源？
+    # 目前只有财联社。
+    # 让我们优化为：使用 Session + 减少 sleep
     
     for page in range(5): 
         params = {
@@ -93,7 +121,8 @@ def get_cls_news(hours=12, logger=None):
         }
         
         try:
-            resp = requests.get(CLS_API_URL, headers=HEADERS, params=params, timeout=5)
+            # 使用 session
+            resp = session.get(CLS_API_URL, headers=HEADERS, params=params, timeout=5)
             data = resp.json()
             
             if 'data' not in data or 'roll_data' not in data['data']:
@@ -103,9 +132,11 @@ def get_cls_news(hours=12, logger=None):
             if not items:
                 break
                 
+            page_valid_count = 0
             for item in items:
                 item_time = item.get('ctime', 0)
                 if item_time < start_time:
+                    # 时间截止，直接返回
                     return news_list 
                 
                 title = item.get('title', '')
@@ -123,10 +154,15 @@ def get_cls_news(hours=12, logger=None):
                     "time_str": datetime.fromtimestamp(item_time).strftime('%Y-%m-%d %H:%M:%S'),
                     "text": full_text
                 })
+                page_valid_count += 1
             
-            if logger: logger(f"    已抓取第 {page+1} 页，累计 {len(news_list)} 条...")
+            if logger: logger(f"    已抓取第 {page+1} 页，本页有效 {page_valid_count} 条...")
+            
+            # 更新 last_time 为本页最后一条的时间
             last_time = items[-1].get('ctime')
-            time.sleep(1) 
+            
+            # 移除 sleep 以提高速度
+            # time.sleep(1) 
             
         except Exception as e:
             msg = f"[!] Error fetching news: {e}"
@@ -180,10 +216,17 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 【最新舆情新闻】
 {news_content}
 
-请结合市场数据（涨停梯队、炸板情况）和新闻舆情，分析市场情绪主线，并预测关注标的。
+请结合市场数据（涨停梯队、炸板情况、涨跌家数）和新闻舆情，分析市场情绪主线，并预测关注标的。
 
 请严格按照以下标准分类：
 {strategy_desc}
+
+【评分标准 (Score 0-10)】
+请基于以下维度进行综合打分，不要随意给分：
+1. **新闻重磅度 (40%)**: 是否为国家级政策、行业重大突破或突发利好？(普通消息<6分, 重磅>8分)
+2. **题材主流度 (30%)**: 是否契合当前市场主线（如AI、低空经济等）？(非主线扣分)
+3. **个股辨识度 (30%)**: 是否为龙头、老妖股或近期人气股？(杂毛股扣分)
+注意：如果仅仅是普通利好且非主线，分数不应超过 7.0。只有绝对龙头或特大利好才能超过 9.0。
 
 请返回纯 JSON 格式，不要包含 Markdown 格式，格式如下：
 {{

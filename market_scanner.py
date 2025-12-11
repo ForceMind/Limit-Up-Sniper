@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import akshare as ak
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 临时过滤北证股票 (8开头, 4开头, 92开头)
 FILTER_BSE = False
@@ -311,12 +312,12 @@ def get_market_overview(logger=None):
     except Exception as e:
         if logger: logger(f"[!] 获取指数失败: {e}")
 
-    # 2. 获取涨跌分布 (东财全A扫描)
+    # 2. 获取涨跌分布 (东财全A扫描 - 并发分页获取)
     try:
         url = "http://push2.eastmoney.com/api/qt/clist/get"
-        params = {
+        base_params = {
             "pn": 1,
-            "pz": 6000, # 获取全部
+            "pz": 2000, # 分页获取
             "po": 1,
             "np": 1,
             "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -327,31 +328,48 @@ def get_market_overview(logger=None):
             "fields": "f3", # 只取涨跌幅
             "_": int(time.time() * 1000)
         }
-        resp = requests.get(url, params=params, timeout=5)
-        data = resp.json()
-        if data.get('data') and data['data'].get('diff'):
-            stocks = data['data']['diff']
-            up = 0
-            down = 0
-            flat = 0
-            limit_down = 0
-            
-            for s in stocks:
-                chg = s['f3']
-                if chg > 0:
-                    up += 1
-                elif chg < 0:
-                    down += 1
-                    # 粗略估算跌停: < -9.5%
-                    if chg < -9.5:
-                        limit_down += 1
-                else:
-                    flat += 1
-            
-            overview["stats"]["up_count"] = up
-            overview["stats"]["down_count"] = down
-            overview["stats"]["flat_count"] = flat
-            overview["stats"]["limit_down_count"] = limit_down
+        
+        up = 0
+        down = 0
+        flat = 0
+        limit_down = 0
+        
+        def fetch_page(page):
+            params = base_params.copy()
+            params["pn"] = page
+            try:
+                resp = requests.get(url, params=params, timeout=3)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get('data') and data['data'].get('diff'):
+                        return data['data']['diff']
+            except:
+                pass
+            return []
+
+        # 并发抓取 3 页 (覆盖约 6000 只股票)
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(fetch_page, page) for page in range(1, 4)]
+            for future in as_completed(futures):
+                stocks = future.result()
+                for s in stocks:
+                    chg = s.get('f3')
+                    if chg is None: continue
+                    
+                    if chg > 0:
+                        up += 1
+                    elif chg < 0:
+                        down += 1
+                        # 粗略估算跌停: < -9.5%
+                        if chg < -9.5:
+                            limit_down += 1
+                    else:
+                        flat += 1
+        
+        overview["stats"]["up_count"] = up
+        overview["stats"]["down_count"] = down
+        overview["stats"]["flat_count"] = flat
+        overview["stats"]["limit_down_count"] = limit_down
             
     except Exception as e:
         if logger: logger(f"[!] 获取涨跌分布失败: {e}")

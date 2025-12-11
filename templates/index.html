@@ -131,9 +131,9 @@
 
         <!-- Market Sentiment Dashboard -->
         <div class="mb-4 px-2 md:px-4" v-if="marketSentiment">
-            <div class="bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-2 md:grid-cols-5 gap-4 text-xs md:text-sm shadow-lg">
+            <div class="bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 text-xs md:text-sm shadow-lg">
                 <!-- Indices -->
-                <div class="col-span-2 md:col-span-2 flex items-center justify-around border-r border-gray-200 dark:border-gray-700 pr-4">
+                <div class="col-span-3 md:col-span-2 flex items-center justify-around border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 pb-2 md:pb-0 md:pr-4">
                     <div v-for="idx in marketSentiment.indices" :key="idx.name" class="flex flex-col items-center">
                         <span class="text-gray-500 dark:text-gray-400 text-[10px]">{{ idx.name }}</span>
                         <div class="flex items-center gap-1 font-bold">
@@ -145,54 +145,54 @@
                 </div>
                 
                 <!-- Limit Stats -->
-                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-4">
+                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-2 md:pr-4">
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">涨停</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">涨停</span>
                         <span class="text-red-500 font-bold">{{ marketSentiment.stats.limit_up_count }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">炸板</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">炸板</span>
                         <span class="text-green-500 font-bold">{{ marketSentiment.stats.broken_count }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">跌停</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">跌停</span>
                         <span class="text-green-700 dark:text-green-400 font-bold">{{ marketSentiment.stats.limit_down_count || '-' }}</span>
                     </div>
                 </div>
 
                 <!-- Breadth Stats -->
-                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-4">
+                <div class="col-span-1 md:col-span-1 flex flex-col justify-center gap-1 border-r border-gray-200 dark:border-gray-700 pr-2 md:pr-4">
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">上涨</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">上涨</span>
                         <span class="text-red-500 font-bold">{{ marketSentiment.stats.up_count || '-' }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">下跌</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">下跌</span>
                         <span class="text-green-500 font-bold">{{ marketSentiment.stats.down_count || '-' }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-gray-500 dark:text-gray-400 text-[10px]">成交</span>
-                        <span class="text-blue-500 dark:text-blue-400 font-bold">{{ marketSentiment.stats.total_volume }}亿</span>
+                        <span class="text-gray-500 dark:text-gray-400 text-[10px] scale-90 origin-left">成交</span>
+                        <span class="text-blue-500 dark:text-blue-400 font-bold text-[10px]">{{ marketSentiment.stats.total_volume }}亿</span>
                     </div>
                 </div>
                 
                 <!-- Sentiment -->
-                <div class="col-span-1 md:col-span-1 flex items-center gap-2 justify-end">
-                    <div class="text-right">
-                        <div class="text-gray-500 dark:text-gray-400 text-[10px]">市场情绪</div>
-                        <div class="font-bold" :class="{
+                <div class="col-span-1 md:col-span-1 flex flex-col justify-center items-center gap-1">
+                    <div class="text-center">
+                        <div class="text-gray-500 dark:text-gray-400 text-[10px] mb-1">市场情绪</div>
+                        <div class="font-bold text-sm" :class="{
                             'text-red-500': marketSentiment.stats.sentiment === 'High',
                             'text-green-500': marketSentiment.stats.sentiment === 'Low' || marketSentiment.stats.sentiment === 'Panic',
                             'text-yellow-500': marketSentiment.stats.sentiment === 'Neutral'
                         }">{{ marketSentiment.stats.suggestion }}</div>
                     </div>
-                    <div class="w-2 h-8 rounded bg-gray-200 dark:bg-gray-700 relative overflow-hidden">
-                        <div class="absolute bottom-0 left-0 w-full transition-all duration-500"
+                    <div class="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden mt-1">
+                        <div class="absolute top-0 left-0 h-full transition-all duration-500"
                              :class="{
-                                'bg-red-500 h-full': marketSentiment.stats.sentiment === 'High',
-                                'bg-yellow-500 h-1/2': marketSentiment.stats.sentiment === 'Neutral',
-                                'bg-green-500 h-1/4': marketSentiment.stats.sentiment === 'Low',
-                                'bg-green-800 h-0': marketSentiment.stats.sentiment === 'Panic'
+                                'bg-red-500 w-full': marketSentiment.stats.sentiment === 'High',
+                                'bg-yellow-500 w-1/2': marketSentiment.stats.sentiment === 'Neutral',
+                                'bg-green-500 w-1/4': marketSentiment.stats.sentiment === 'Low',
+                                'bg-green-800 w-0': marketSentiment.stats.sentiment === 'Panic'
                              }"></div>
                     </div>
                 </div>
