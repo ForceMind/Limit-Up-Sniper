@@ -303,6 +303,20 @@ async def startup_event():
     asyncio.create_task(log_broadcaster())
     # Start background scheduler
     asyncio.create_task(scheduler_loop())
+    
+    # 启动时立即执行一次盘中扫描，确保列表不为空
+    print("Startup: Running initial intraday scan...")
+    asyncio.create_task(run_initial_scan())
+
+async def run_initial_scan():
+    """启动时立即运行一次扫描"""
+    try:
+        # 等待几秒确保其他组件就绪
+        await asyncio.sleep(2)
+        await asyncio.to_thread(execute_analysis, "intraday")
+        print("Startup: Initial scan completed.")
+    except Exception as e:
+        print(f"Startup scan error: {e}")
 
 async def scheduler_loop():
     """Background scheduler for periodic tasks"""

@@ -688,10 +688,10 @@
                         .filter(s => s.strategy === 'Aggressive')
                         .sort((a, b) => b.initial_score - a.initial_score);
                 },
-                // Right Column: LimitUp Strategy + Neutral
+                // Right Column: LimitUp Strategy
                 limitUpStocks() {
                     return this.stocks
-                        .filter(s => (s.strategy === 'LimitUp' || s.strategy === 'Neutral') && s.change_percent < 9.5) 
+                        .filter(s => s.strategy === 'LimitUp' && s.change_percent < 9.99) 
                         .map(stock => {
                             const momentumScore = stock.change_percent; 
                             const total = (stock.initial_score * 0.4) + (momentumScore * 0.6);
