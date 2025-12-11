@@ -253,6 +253,7 @@ def analyze_single_stock(stock_data, logger=None):
     price = stock_data.get('current', 0)
     change = stock_data.get('change_percent', 0)
     concept = stock_data.get('concept', '')
+    prompt_type = stock_data.get('promptType', 'default')
     
     # 1. 尝试获取该股票的最新新闻 (模拟搜索)
     # 这里简单复用 get_cls_news 的逻辑，但针对特定关键词过滤
@@ -266,7 +267,39 @@ def analyze_single_stock(stock_data, logger=None):
         pass
 
     # 2. 构建大师级分析 Prompt
-    prompt = f"""
+    if prompt_type == 'aggressive':
+        prompt = f"""
+你是一位擅长竞价抢筹和超短线博弈的顶级游资。请针对股票【{name} ({code})】进行“竞价抢筹”维度的深度推演。
+
+【盘面数据】
+- 现价: {price}
+- 涨幅: {change}%
+- 概念: {concept}
+- 指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
+
+【核心分析逻辑】
+请重点回答以下问题（Chain of Thought）：
+1. **抢筹逻辑**: 为什么这只股票明天可能会涨？为什么现在是抢筹的时机？（结合题材热度、身位优势、主力资金意图）
+2. **预期差**: 市场可能忽略了什么？是否存在弱转强、卡位或补涨的预期？
+3. **风险收益比**: 如果明天竞价买入，盈亏比如何？
+
+【最终输出】
+请以 Markdown 格式输出简报：
+### 1. 核心抢筹理由 (Why Buy Now?)
+(直击痛点，说明上涨预期)
+
+### 2. 预期差与博弈点
+(分析主力意图和市场情绪)
+
+### 3. 竞价策略 (Action)
+- **关注价格**: (什么样的开盘价符合预期)
+- **止损位**: 
+- **胜率**: (高/中/低)
+
+请保持语言犀利、极简，直击核心。
+"""
+    else:
+        prompt = f"""
 你是一位拥有20年经验的A股顶级游资操盘手，精通情绪周期、题材挖掘和技术面分析。请对股票【{name} ({code})】进行全方位的深度推演。
 
 【盘面数据】

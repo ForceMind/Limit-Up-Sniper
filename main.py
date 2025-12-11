@@ -735,6 +735,7 @@ class StockAnalysisRequest(BaseModel):
     change_percent: float
     concept: str = ""
     metrics: dict = {}
+    promptType: str = "default"
 
 @app.post("/api/analyze_stock")
 async def api_analyze_stock(request: StockAnalysisRequest):
@@ -743,6 +744,7 @@ async def api_analyze_stock(request: StockAnalysisRequest):
     """
     stock_data = request.dict()
     loop = asyncio.get_event_loop()
+    # Pass promptType explicitly or let analyze_single_stock handle it from stock_data
     result = await loop.run_in_executor(None, analyze_single_stock, stock_data)
     return {"status": "success", "analysis": result}
 

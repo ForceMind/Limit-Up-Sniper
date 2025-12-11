@@ -211,10 +211,10 @@
                         <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
                             <div class="col-span-1">排名</div>
                             <div class="col-span-1">代码</div>
-                            <div class="col-span-2">名称</div>
+                            <div class="col-span-1">名称</div>
                             <div class="col-span-1 text-right">现价</div>
                             <div class="col-span-1 text-right">涨幅</div>
-                            <div class="col-span-2 text-center">板块/概念</div>
+                            <div class="col-span-3 text-center">板块/概念</div>
                             <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
                             <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
                             <div class="col-span-1 text-right cursor-help" title="溢价率: 涨停次日平均高开幅度">溢价 <span class="text-[10px]">?</span></div>
@@ -228,7 +228,7 @@
                                 
                                 <div class="col-span-1 font-mono text-gray-500 text-xs">#{{ index + 1 }}</div>
                                 <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
-                                <div class="col-span-2 font-bold truncate sticky left-0 z-20 bg-purple-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-purple-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                     <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                 </div>
                                 <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
@@ -236,8 +236,11 @@
                                      :class="getColorClass(stock.change_percent)">
                                     {{ stock.change_percent }}%
                                 </div>
-                                <div class="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400 truncate">
-                                    {{ stock.concept }}
+                                <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
+                                    <span>{{ stock.concept }}</span>
+                                    <button @click.stop="analyzeStock(stock, 'aggressive')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
+                                        🤖
+                                    </button>
                                 </div>
                                 <!-- Metrics -->
                                 <div class="col-span-1 text-right text-xs text-red-600 dark:text-red-400">{{ stock.seal_rate || '-' }}</div>
@@ -271,8 +274,8 @@
                         <!-- Table Header -->
                         <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
                             <div class="col-span-1">代码</div>
-                            <div class="col-span-2">名称</div>
-                            <div class="col-span-2 text-center">板块/概念</div>
+                            <div class="col-span-1">名称</div>
+                            <div class="col-span-3 text-center">板块/概念</div>
                             <div class="col-span-1 text-right">现价</div>
                             <div class="col-span-1 text-right">涨幅</div>
                             <div class="col-span-1 text-right">涨速</div>
@@ -290,10 +293,10 @@
                                      :class="getRowHighlightClass(stock)">
                                     
                                     <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
-                                    <div class="col-span-2 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
+                                    <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
                                         <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                     </div>
-                                    <div class="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
+                                    <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
                                         <span>{{ stock.concept }}</span>
                                         <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
                                             🤖
@@ -376,8 +379,8 @@
                         <!-- Table Header -->
                         <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
                             <div class="col-span-1">代码</div>
-                            <div class="col-span-2">名称</div>
-                            <div class="col-span-2 text-center">板块/概念</div>
+                            <div class="col-span-1">名称</div>
+                            <div class="col-span-3 text-center">板块/概念</div>
                             <div class="col-span-1 text-right">现价</div>
                             <div class="col-span-1 text-right">涨幅</div>
                             <div class="col-span-1 text-right">涨速</div>
@@ -398,10 +401,10 @@
                                         <button v-if="isEditMode" @click.stop="removeStock(stock)" class="text-red-500 hover:text-red-700 font-bold px-1">×</button>
                                         {{ stock.code.replace('sh', '').replace('sz', '') }}
                                     </div>
-                                    <div class="col-span-2 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
+                                    <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
                                         <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                     </div>
-                                    <div class="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
+                                    <div class="col-span-3 text-center text-xs text-gray-500 dark:text-gray-400 truncate flex items-center justify-center gap-1">
                                         <span>{{ stock.concept }}</span>
                                         <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700" title="AI深度分析">
                                             🤖
@@ -453,11 +456,11 @@
                             <!-- Table Header -->
                             <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
                                 <div class="col-span-1">代码</div>
-                                <div class="col-span-2">名称</div>
+                                <div class="col-span-1">名称</div>
                                 <div class="col-span-1 text-right">现价</div>
                                 <div class="col-span-1 text-right">涨幅</div>
                                 <div class="col-span-1 text-right">首封时间</div>
-                                <div class="col-span-1">概念</div>
+                                <div class="col-span-2">概念</div>
                                 <div class="col-span-1">关联</div>
                                 <div class="col-span-1 text-right cursor-help" title="晋级率: 连板成功概率 (连板成功/连板尝试)">晋级 <span class="text-[10px]">?</span></div>
                                 <div class="col-span-1 text-right cursor-help" title="首炸率: 首板炸板概率 (首板失败/首板尝试)">首炸 <span class="text-[10px]">?</span></div>
@@ -472,7 +475,7 @@
                                          class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2 bg-red-50 dark:bg-red-900/10">
                                         
                                         <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
-                                        <div class="col-span-2 font-bold truncate sticky left-0 z-20 bg-red-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                        <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-red-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                             <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '').replace('bj', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                         </div>
                                         <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
@@ -482,7 +485,7 @@
                                         <div class="col-span-1 text-right text-gray-500 dark:text-gray-400 text-xs">
                                             {{ stock.time }}
                                         </div>
-                                        <div class="col-span-1 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
+                                        <div class="col-span-2 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
                                             <span class="truncate" :title="stock.concept">{{ stock.concept }}</span>
                                             <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
@@ -524,11 +527,11 @@
                             <!-- Table Header -->
                             <div class="grid grid-cols-12 gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30">
                                 <div class="col-span-1">代码</div>
-                                <div class="col-span-2">名称</div>
+                                <div class="col-span-1">名称</div>
                                 <div class="col-span-1 text-right">现价</div>
                                 <div class="col-span-1 text-right">涨幅</div>
                                 <div class="col-span-1 text-right">首次炸板</div>
-                                <div class="col-span-1">概念</div>
+                                <div class="col-span-2">概念</div>
                                 <div class="col-span-1">关联</div>
                                 <div class="col-span-1 text-right">回封率</div>
                                 <div class="col-span-1 text-right">振幅</div>
@@ -543,7 +546,7 @@
                                          class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid grid-cols-12 gap-2 items-center px-2 py-2 bg-gray-50 dark:bg-gray-900/10">
                                         
                                         <div class="col-span-1 text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
-                                        <div class="col-span-2 font-bold truncate sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+                                        <div class="col-span-1 font-bold truncate sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
                                             <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '').replace('bj', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
                                         </div>
                                         <div class="col-span-1 text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
@@ -553,7 +556,7 @@
                                         <div class="col-span-1 text-right text-gray-500 dark:text-gray-400 text-xs">
                                             {{ stock.time }}
                                         </div>
-                                        <div class="col-span-1 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
+                                        <div class="col-span-2 text-xs text-gray-500 dark:text-gray-400 truncate flex items-center gap-1">
                                             <span class="truncate" :title="stock.concept">{{ stock.concept }}</span>
                                             <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
@@ -992,7 +995,7 @@
                         alert('删除请求错误');
                     }
                 },
-                async analyzeStock(stock) {
+                async analyzeStock(stock, promptType = 'default') {
                     this.analyzingStockName = stock.name;
                     this.currentAnalysisStock = stock;
                     this.showAnalysisModal = true;
@@ -1013,7 +1016,8 @@
                                 next_day_premium: stock.next_day_premium,
                                 limit_up_days: stock.limit_up_days,
                                 speed: stock.speed
-                            }
+                            },
+                            promptType: promptType
                         };
                         
                         const response = await fetch('/api/analyze_stock', {
