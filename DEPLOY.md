@@ -28,12 +28,21 @@
 
 ## 🔄 如何更新 (Update)
 
-当你拉取了最新代码后，建议重新运行安装脚本以确保所有配置（如 Nginx、Systemd）都已更新。
+我们提供了一个更新脚本 `update.sh`，它会自动拉取最新代码、更新依赖并重启服务。
+
+```bash
+cd limit-up-sniper
+sudo bash update.sh
+```
+
+如果脚本执行失败，你可以尝试手动更新：
 
 ```bash
 cd limit-up-sniper
 git pull
-sudo bash install.sh
+source venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart limit-up-sniper
 ```
 
 ---

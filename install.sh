@@ -40,7 +40,22 @@ pip install -r requirements.txt -q
 
 # 4. 配置 API Key
 echo -e "${YELLOW}[3/6] 配置 Deepseek API...${NC}"
-read -p "请输入您的 Deepseek API Key: " API_KEY
+
+# 尝试从现有服务文件中读取 API Key
+DEFAULT_KEY=""
+SERVICE_FILE="/etc/systemd/system/limit-up-sniper.service"
+if [ -f "$SERVICE_FILE" ]; then
+    # 提取 Key (假设格式为 Environment="DEEPSEEK_API_KEY=sk-...")
+    EXISTING_KEY=$(grep "DEEPSEEK_API_KEY" $SERVICE_FILE | cut -d'=' -f3 | tr -d '"')
+    if [ ! -z "$EXISTING_KEY" ]; then
+        DEFAULT_KEY=$EXISTING_KEY
+        echo "检测到现有 API Key: ${DEFAULT_KEY:0:5}******${DEFAULT_KEY: -4}"
+    fi
+fi
+
+read -p "请输入您的 Deepseek API Key (回车使用现有 Key): " INPUT_KEY
+API_KEY=${INPUT_KEY:-$DEFAULT_KEY}
+
 if [ -z "$API_KEY" ]; then
     echo -e "${RED}[Error] API Key 不能为空。${NC}"
     exit 1
