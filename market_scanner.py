@@ -28,7 +28,7 @@ def scan_intraday_limit_up(logger=None):
     url = "http://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": 1,
-        "pz": 200, # 取前200名，避免前50名全是已涨停的股票导致漏掉接近涨停的
+        "pz": 2000, # Increase to 2000
         "po": 1,
         "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -128,7 +128,7 @@ def scan_limit_up_pool(logger=None):
     
     params = {
         "pn": 1,
-        "pz": 200, # Top 200
+        "pz": 2000, # Increase to 2000
         "po": 1,
         "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -213,7 +213,7 @@ def scan_broken_limit_pool(logger=None):
     
     params = {
         "pn": 1,
-        "pz": 200, # Top 200
+        "pz": 2000, # Increase to 2000
         "po": 1,
         "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",

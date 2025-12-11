@@ -752,7 +752,7 @@
                 // Right Column: LimitUp Strategy
                 limitUpStocks() {
                     return this.stocks
-                        .filter(s => s.strategy === 'LimitUp' && s.change_percent < 9.99 && this.checkBoardVisibility(s.code)) 
+                        .filter(s => s.strategy === 'LimitUp' && this.checkBoardVisibility(s.code)) 
                         .map(stock => {
                             const momentumScore = stock.change_percent; 
                             const total = (stock.initial_score * 0.4) + (momentumScore * 0.6);

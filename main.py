@@ -604,6 +604,14 @@ async def api_limit_up_pool():
         "broken": broken_limit_pool_data
     }
 
+@app.get("/api/intraday_pool")
+async def api_intraday_pool():
+    """直接获取盘中打板扫描结果"""
+    from market_scanner import scan_intraday_limit_up
+    loop = asyncio.get_event_loop()
+    stocks = await loop.run_in_executor(None, scan_intraday_limit_up)
+    return stocks
+
 @app.get("/api/market_sentiment")
 async def api_market_sentiment():
     """获取大盘情绪数据"""
