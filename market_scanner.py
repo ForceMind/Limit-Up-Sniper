@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 # 临时过滤北证股票 (8开头, 4开头, 92开头)
-FILTER_BSE = True
+FILTER_BSE = False
 
 def is_bse_stock(code):
     """检查是否为北证股票"""
@@ -96,7 +96,10 @@ def scan_intraday_limit_up(logger=None):
                 continue
                 
             # 格式化代码
-            full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+            if is_bse_stock(code):
+                full_code = f"bj{code}"
+            else:
+                full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
             found_stocks.append({
                 "code": full_code,
@@ -179,7 +182,10 @@ def scan_limit_up_pool(logger=None):
                 continue
                 
             # 格式化代码
-            full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+            if is_bse_stock(code):
+                full_code = f"bj{code}"
+            else:
+                full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
             found_stocks.append({
                 "code": full_code,
@@ -248,7 +254,11 @@ def scan_broken_limit_pool(logger=None):
                 # Check if Broken (Current < High)
                 # Use a small epsilon to avoid floating point issues
                 if current < high - 0.009:
-                    full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+                    if is_bse_stock(code):
+                        full_code = f"bj{code}"
+                    else:
+                        full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+                    
                     found_stocks.append({
                         "code": full_code,
                         "name": name,
