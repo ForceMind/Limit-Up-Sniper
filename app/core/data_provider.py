@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 class DataProvider:
     def __init__(self, logger=None):
         self.logger = logger
+        self._last_market_df = None
+        self._last_market_ts = 0
 
     def log(self, msg):
         if self.logger:
@@ -138,6 +140,11 @@ class DataProvider:
         Fetch ALL stocks for market overview and scanning.
         Returns DataFrame.
         """
+        # Throttle to reduce provider pressure: reuse cache within 5 minutes
+        now_ts = time.time()
+        if self._last_market_df is not None and now_ts - self._last_market_ts < 300:
+            return self._last_market_df.copy()
+
         # Helper to temporarily unset proxy
         import os
         old_http = os.environ.get("HTTP_PROXY")
@@ -180,6 +187,8 @@ class DataProvider:
                 for col in ['current', 'change_percent', 'prev_close', 'high']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                self._last_market_df = df.copy()
+                self._last_market_ts = now_ts
                 return df
             except Exception as e:
                 self.log(f"[!] Sina failed: {e}")
@@ -189,6 +198,8 @@ class DataProvider:
                 self.log("[*] Fetching all market data (Sina JSON API)...")
                 df = self._fetch_sina_market_json()
                 if df is not None and not df.empty:
+                    self._last_market_df = df.copy()
+                    self._last_market_ts = now_ts
                     return df
             except Exception as e:
                 self.log(f"[!] Sina JSON failed: {e}")
@@ -198,6 +209,8 @@ class DataProvider:
                 self.log("[*] Fetching all market data (Manual EM)...")
                 df = self._fetch_em_spot_manual()
                 if df is not None and not df.empty:
+                    self._last_market_df = df.copy()
+                    self._last_market_ts = now_ts
                     return df
             except Exception as e:
                 self.log(f"[!] Manual EM failed: {e}")
@@ -207,10 +220,15 @@ class DataProvider:
                 self.log("[*] Fetching all market data (Tushare)...")
                 df = self._fetch_tushare_spot()
                 if df is not None and not df.empty:
+                    self._last_market_df = df.copy()
+                    self._last_market_ts = now_ts
                     return df
             except Exception as e:
                 self.log(f"[!] Tushare failed: {e}")
                 
+            # Fallback: return last cache even if stale
+            if self._last_market_df is not None:
+                return self._last_market_df.copy()
             return None
         finally:
             # Restore proxy settings
