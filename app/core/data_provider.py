@@ -63,7 +63,11 @@ class DataProvider:
             url = "http://hq.sinajs.cn/list=" + ",".join(batch)
             headers = {"Referer": "http://finance.sina.com.cn"}
             try:
-                resp = requests.get(url, headers=headers, timeout=5)
+                # Use session with trust_env=False to bypass system proxy
+                with requests.Session() as session:
+                    session.trust_env = False
+                    resp = session.get(url, headers=headers, timeout=5)
+                
                 resp.encoding = 'gbk'
                 
                 for line in resp.text.split('\n'):
@@ -133,45 +137,66 @@ class DataProvider:
         Fetch ALL stocks for market overview and scanning.
         Returns DataFrame.
         """
-        # 1. Try AKShare (EastMoney)
+        # Helper to temporarily unset proxy
+        import os
+        old_http = os.environ.get("HTTP_PROXY")
+        old_https = os.environ.get("HTTPS_PROXY")
+        os.environ.pop("HTTP_PROXY", None)
+        os.environ.pop("HTTPS_PROXY", None)
+
         try:
-            self.log("[*] Fetching all market data (AKShare/EM)...")
-            df = ak.stock_zh_a_spot_em()
-            rename_map = {
-                '代码': 'code', '名称': 'name', '最新价': 'current', '涨跌幅': 'change_percent',
-                '涨速': 'speed', '换手率': 'turnover', '流通市值': 'circ_mv', '昨收': 'prev_close',
-                '最高': 'high', '最低': 'low', '今开': 'open', '成交额': 'amount'
-            }
-            df = df.rename(columns=rename_map)
-            # Ensure numeric
-            for col in ['current', 'change_percent', 'speed', 'turnover', 'circ_mv', 'prev_close']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            return df
-        except Exception as e:
-            self.log(f"[!] AKShare/EM failed: {e}")
+            # 1. Try AKShare (EastMoney)
+            try:
+                self.log("[*] Fetching all market data (AKShare/EM)...")
+                df = ak.stock_zh_a_spot_em()
+                rename_map = {
+                    '代码': 'code', '名称': 'name', '最新价': 'current', '涨跌幅': 'change_percent',
+                    '涨速': 'speed', '换手率': 'turnover', '流通市值': 'circ_mv', '昨收': 'prev_close',
+                    '最高': 'high', '最低': 'low', '今开': 'open', '成交额': 'amount'
+                }
+                df = df.rename(columns=rename_map)
+                # Ensure numeric
+                for col in ['current', 'change_percent', 'speed', 'turnover', 'circ_mv', 'prev_close', 'high']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                return df
+            except Exception as e:
+                self.log(f"[!] AKShare/EM failed: {e}")
+                
+            # 2. Try Sina
+            try:
+                self.log("[*] Fetching all market data (Sina)...")
+                df = ak.stock_zh_a_spot()
+                rename_map = {
+                    '代码': 'code', '名称': 'name', '最新价': 'current', '涨跌幅': 'change_percent',
+                    '昨收': 'prev_close', '成交额': 'amount', '最高': 'high'
+                }
+                df = df.rename(columns=rename_map)
+                # Add missing columns
+                for col in ['speed', 'turnover', 'circ_mv']:
+                    df[col] = 0.0
+                
+                for col in ['current', 'change_percent', 'prev_close', 'high']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                return df
+            except Exception as e:
+                self.log(f"[!] Sina failed: {e}")
             
-        # 2. Try Sina
-        try:
-            self.log("[*] Fetching all market data (Sina)...")
-            df = ak.stock_zh_a_spot()
-            rename_map = {
-                '代码': 'code', '名称': 'name', '最新价': 'current', '涨跌幅': 'change_percent',
-                '昨收': 'prev_close', '成交额': 'amount'
-            }
-            df = df.rename(columns=rename_map)
-            # Add missing columns
-            for col in ['speed', 'turnover', 'circ_mv']:
-                df[col] = 0.0
-            
-            for col in ['current', 'change_percent', 'prev_close']:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            return df
-        except Exception as e:
-            self.log(f"[!] Sina failed: {e}")
-            
-        return None
+            # 3. Try Manual EM (Fallback for Proxy Issues)
+            try:
+                self.log("[*] Fetching all market data (Manual EM)...")
+                df = self._fetch_em_spot_manual()
+                if df is not None and not df.empty:
+                    return df
+            except Exception as e:
+                self.log(f"[!] Manual EM failed: {e}")
+                
+            return None
+        finally:
+            # Restore proxy settings
+            if old_http: os.environ["HTTP_PROXY"] = old_http
+            if old_https: os.environ["HTTPS_PROXY"] = old_https
 
     def fetch_limit_up_pool(self):
         """Fetch Limit Up Pool"""
@@ -198,7 +223,10 @@ class DataProvider:
         try:
             url = "http://hq.sinajs.cn/list=sh000001,sz399001,sz399006"
             headers = {"Referer": "http://finance.sina.com.cn"}
-            resp = requests.get(url, headers=headers, timeout=5)
+            
+            with requests.Session() as session:
+                session.trust_env = False
+                resp = session.get(url, headers=headers, timeout=5)
             
             indices = []
             indices_map = {"sh000001": "上证指数", "sz399001": "深证成指", "sz399006": "创业板指"}
@@ -317,6 +345,49 @@ class DataProvider:
             self.log(f"[!] Get stock info error: {e}")
             
         return name, concept
+
+    def _fetch_em_spot_manual(self):
+        """
+        Manual implementation of EastMoney Spot Data to bypass proxy issues.
+        """
+        try:
+            url = "http://82.push2.eastmoney.com/api/qt/clist/get"
+            params = {
+                "pn": "1", "pz": "5000", "po": "1", "np": "1", 
+                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                "fltt": "2", "invt": "2", "fid": "f3",
+                "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+                "fields": "f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+            }
+            # f12:code, f14:name, f2:current, f3:change_percent, f4:change_amount, f5:volume, f6:amount, f7:amplitude, f8:turnover, f9:pe, f10:vol_ratio, f15:high, f16:low, f17:open, f18:prev_close
+            
+            session = requests.Session()
+            session.trust_env = False # Ignore system proxy
+            
+            resp = session.get(url, params=params, timeout=10)
+            data = resp.json()
+            
+            if data and data.get('data') and data['data'].get('diff'):
+                rows = data['data']['diff']
+                # Convert to DataFrame
+                df = pd.DataFrame(rows)
+                rename_map = {
+                    'f12': 'code', 'f14': 'name', 'f2': 'current', 'f3': 'change_percent',
+                    'f8': 'turnover', 'f20': 'circ_mv', 'f18': 'prev_close',
+                    'f15': 'high', 'f16': 'low', 'f17': 'open', 'f6': 'amount'
+                }
+                df = df.rename(columns=rename_map)
+                
+                # Handle special values
+                for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                        
+                # Handle "-" in data
+                return df
+        except Exception as e:
+            self.log(f"[!] Manual EM fetch failed: {e}")
+        return None
 
 # Global instance
 data_provider = DataProvider()

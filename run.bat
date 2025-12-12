@@ -1,6 +1,12 @@
 @echo off
 setlocal
 
+:: Clear Proxy (Fix for requests failing in some environments)
+set HTTP_PROXY=
+set HTTPS_PROXY=
+set http_proxy=
+set https_proxy=
+
 :: Check if venv exists
 if not exist "venv" (
     echo [Error] Virtual environment not found. Please run install.bat first.

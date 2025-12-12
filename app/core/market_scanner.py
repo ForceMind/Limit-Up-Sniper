@@ -295,12 +295,12 @@ def get_market_overview(logger=None):
         indices = data_provider.fetch_indices()
         overview["indices"] = indices
         
-        overview["stats"]["total_volume"] = sum([idx['amount'] for idx in indices])
+        overview["stats"]["total_volume"] = round(sum([idx['amount'] for idx in indices]), 2)
         
     except Exception as e:
         if logger: logger(f"[!] 获取指数失败: {e}")
 
-    # 2. 获取涨跌分布
+    # 2. 获取涨跌分布 & 情绪数据 (使用全市场数据计算，更稳定)
     try:
         df = data_provider.fetch_all_market_data()
         
@@ -316,25 +316,43 @@ def get_market_overview(logger=None):
             overview["stats"]["down_count"] = down
             overview["stats"]["flat_count"] = flat
             overview["stats"]["limit_down_count"] = limit_down
+
+            # 计算涨停和炸板数量
+            limit_up_count = 0
+            broken_count = 0
+            
+            for _, row in df.iterrows():
+                try:
+                    code = str(row['code'])
+                    current = float(row['current'])
+                    prev_close = float(row['prev_close'])
+                    high = float(row.get('high', 0))
+                    
+                    if current == 0 or prev_close == 0: continue
+
+                    # 判断涨跌停价格
+                    is_20cm = code.startswith('30') or code.startswith('68')
+                    limit_ratio = 1.2 if is_20cm else 1.1
+                    limit_price = round(prev_close * limit_ratio, 2)
+                    
+                    # 判定涨停
+                    if current >= limit_price:
+                        limit_up_count += 1
+                    # 判定炸板 (最高价曾触及涨停，但当前价未封板)
+                    elif high >= limit_price and current < limit_price:
+                        broken_count += 1
+                except:
+                    continue
+            
+            overview["stats"]["limit_up_count"] = limit_up_count
+            overview["stats"]["broken_count"] = broken_count
+
         else:
             if logger: logger("[!] 无法获取全市场数据，涨跌分布统计失败")
             
     except Exception as e:
         if logger: logger(f"[!] 获取涨跌分布失败: {e}")
 
-    # 3. 获取涨停/炸板数据
-    try:
-        zt_list = scan_limit_up_pool(logger)
-        if zt_list is not None:
-            overview["stats"]["limit_up_count"] = len(zt_list)
-        
-        zb_list = scan_broken_limit_pool(logger)
-        if zb_list is not None:
-            overview["stats"]["broken_count"] = len(zb_list)
-            
-    except Exception as e:
-        if logger: logger(f"[!] 获取涨停统计失败: {e}")
-        
     # 4. 计算情绪
     zt_count = overview["stats"]["limit_up_count"]
     sh_change = 0
