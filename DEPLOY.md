@@ -149,7 +149,62 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl restart nginx
 ```
+## 常用维护命令
 
+*   **查看应用日志**:
+    ```bash
+    sudo journalctl -u limit-up-sniper -f
+    ```
+*   **重启应用**:
+    ```bash
+    sudo systemctl restart limit-up-sniper
+    ```
+*   **停止应用**:
+    ```bash
+    sudo systemctl stop limit-up-sniper
+    ```
+*   **更新代码**:
+    ```bash
+    cd ~/limit-up-sniper
+    git pull
+    sudo systemctl restart limit-up-sniper
+    ```
+
+## 2. 上传代码
+将整个 `Limit-Up-Sniper` 文件夹上传到服务器。
+
+## 3. 安装依赖
+```bash
+cd Limit-Up-Sniper
+pip install -r requirements.txt
+```
+
+## 4. 设置环境变量 (Deepseek Key)
+```bash
+export DEEPSEEK_API_KEY="your-key-here"
+```
+
+## 5. 后台运行 (使用 nohup)
+```bash
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+```
+
+## 6. 访问
+在浏览器访问 `http://服务器IP:8000`。
+
+## 7. (可选) 使用 Nginx 反向代理
+如果需要绑定域名或使用 80 端口，建议配置 Nginx。
+
+## 8. 停止服务
+如果使用 nohup 运行，请使用以下命令停止：
+```bash
+pkill -f uvicorn
+```
+或者先查找进程 ID 再停止：
+```bash
+ps -ef | grep uvicorn
+kill <PID>
+```
 ---
 
 ## ❓ 常见问题 (FAQ)
