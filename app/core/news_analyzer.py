@@ -636,20 +636,27 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
     added_codes = final_codes - initial_codes
     removed_codes = initial_codes - final_codes
     
-    # 获取新增股票名称
-    added_names = []
+    # 获取新增股票名称，并按策略分类
+    added_aggressive = []
+    added_limitup = []
+    
     for code in added_codes:
         item = current_watchlist.get(code)
         if item:
-            added_names.append(f"{item['name']}({code})")
+            info = f"{item['name']}({code})"
+            if item.get('strategy_type') == 'Aggressive':
+                added_aggressive.append(info)
+            else:
+                added_limitup.append(info)
             
-    # 获取移除股票名称 (需要从 initial_codes 对应的原始数据中找，但这里简化处理，只显示代码)
-    # 为了更好的体验，我们尝试从 watchlist (如果还在) 或 current_watchlist 中找，但移除的肯定不在 current_watchlist
-    # 所以这里只显示代码，或者如果之前加载了 existing_data 可以查字典。
-    # 简单起见，只显示数量和新增详情。
-    
     msg = f"[+] 复盘完成。共 {len(final_list)} 个标的。\n"
-    msg += f"    - 新增 {len(added_codes)} 只: {', '.join(added_names) if added_names else '无'}\n"
+    if added_aggressive:
+        msg += f"    - [竞价抢筹] 新增 {len(added_aggressive)} 只: {', '.join(added_aggressive)}\n"
+    if added_limitup:
+        msg += f"    - [盘中打板] 新增 {len(added_limitup)} 只: {', '.join(added_limitup)}\n"
+    if not added_aggressive and not added_limitup:
+        msg += f"    - 无新增标的\n"
+        
     msg += f"    - 移除 {len(removed_codes)} 只\n"
     msg += f"    - 列表已保存至 {output_file}"
     
