@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>涨停狙击手 (Limit-Up Sniper)</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="manifest" href="/static/manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -778,6 +779,17 @@
                             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                         </label>
                     </div>
+                    
+                    <!-- API Key Setting -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">API 设置 (独立版专用)</h4>
+                        <div class="space-y-2">
+                            <label class="block text-xs text-gray-500 dark:text-gray-400">DeepSeek API Key</label>
+                            <input type="password" v-model="apiKey" @change="saveApiKey" placeholder="sk-..." 
+                                   class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
+                            <p class="text-[10px] text-gray-400">仅在本地独立运行时需要填写。服务器版本请忽略。</p>
+                        </div>
+                    </div>
                     <div class="flex items-center justify-between">
                         <span class="text-gray-700 dark:text-gray-300">科创板 (68)</span>
                         <label class="relative inline-flex items-center cursor-pointer">
@@ -859,6 +871,7 @@
                     activePoolTab: 'limit_up', // 'limit_up' or 'broken'
                     // Settings
                     showSettingsModal: false,
+                    apiKey: '', // Store API Key
                     systemConfig: {
                         auto_analysis_enabled: true,
                         use_smart_schedule: true,
@@ -992,6 +1005,9 @@
                 },
                 saveFilterSettings() {
                     localStorage.setItem('filterSettings', JSON.stringify(this.filterSettings));
+                },
+                saveApiKey() {
+                    localStorage.setItem('deepseek_api_key', this.apiKey);
                 },
                 toggleTheme() {
                     this.isDark = !this.isDark;
@@ -1205,7 +1221,8 @@
                                 speed: stock.speed
                             },
                             promptType: promptType,
-                            force: false // Default use cache
+                            force: false, // Default use cache
+                            apiKey: this.apiKey // Pass API Key
                         };
                         
                         const response = await fetch('/api/analyze_stock', {
@@ -1259,7 +1276,8 @@
                                 speed: stock.speed
                             },
                             promptType: promptType,
-                            force: true // Force re-analysis
+                            force: true, // Force re-analysis
+                            apiKey: this.apiKey // Pass API Key
                         };
                         
                         const response = await fetch('/api/analyze_stock', {
@@ -1313,6 +1331,12 @@
                     } catch (e) {
                         console.error('Failed to parse filter settings', e);
                     }
+                }
+                
+                // Initialize API Key
+                const savedApiKey = localStorage.getItem('deepseek_api_key');
+                if (savedApiKey) {
+                    this.apiKey = savedApiKey;
                 }
 
                 // Initialize activeTab based on time for Mobile

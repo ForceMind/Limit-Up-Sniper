@@ -269,7 +269,7 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
         if logger: logger(msg)
         return []
 
-def analyze_single_stock(stock_data, logger=None):
+def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None):
     """
     对单个股票进行深度AI分析 (大师级逻辑)
     """
@@ -278,6 +278,12 @@ def analyze_single_stock(stock_data, logger=None):
     price = stock_data.get('current', 0)
     change = stock_data.get('change_percent', 0)
     concept = stock_data.get('concept', '')
+    
+    # Use provided API key or fallback to env var
+    current_api_key = api_key if api_key else DEEPSEEK_API_KEY
+    
+    if not current_api_key:
+        return "分析失败: 未配置 DeepSeek API Key。请在设置中填写或配置环境变量。"
     prompt_type = stock_data.get('promptType', 'default')
     
     # Additional metrics for better analysis
@@ -379,7 +385,7 @@ def analyze_single_stock(stock_data, logger=None):
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+        "Authorization": f"Bearer {current_api_key}"
     }
 
     try:

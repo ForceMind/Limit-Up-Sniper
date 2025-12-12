@@ -971,6 +971,7 @@ class StockAnalysisRequest(BaseModel):
     metrics: dict = {}
     promptType: str = "default"
     force: bool = False # Force re-analysis
+    apiKey: Optional[str] = None # Optional API Key for standalone mode
 
 @app.post("/api/analyze_stock")
 async def api_analyze_stock(request: StockAnalysisRequest):
@@ -978,6 +979,7 @@ async def api_analyze_stock(request: StockAnalysisRequest):
     调用AI分析单个股票 (支持缓存)
     """
     stock_data = request.dict()
+    api_key = stock_data.get('apiKey')
     code = stock_data.get('code')
     force = stock_data.get('force', False)
     
@@ -1001,7 +1003,8 @@ async def api_analyze_stock(request: StockAnalysisRequest):
 
     loop = asyncio.get_event_loop()
     # Pass promptType explicitly or let analyze_single_stock handle it from stock_data
-    result = await loop.run_in_executor(None, analyze_single_stock, stock_data)
+    # Pass api_key if provided
+    result = await loop.run_in_executor(None, lambda: analyze_single_stock(stock_data, prompt_type=request.promptType, api_key=api_key))
     
     # Update Cache
     if result and not result.startswith("分析失败"):
