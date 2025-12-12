@@ -142,7 +142,22 @@
 
         <!-- Market Sentiment Dashboard -->
         <div class="mb-4 px-2 md:px-4" v-if="marketSentiment">
-            <div class="bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 text-xs md:text-sm shadow-lg">
+            <div class="relative bg-gray-800/80 dark:bg-gray-800/80 bg-white border border-gray-200 dark:border-gray-700 rounded-lg p-3 grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 text-xs md:text-sm shadow-lg">
+                <!-- Refresh Status & Button -->
+                <div class="absolute top-1 right-1 flex items-center gap-1 z-10">
+                    <span class="text-[10px] text-gray-400 scale-90 origin-right" v-if="sentimentLastUpdate">
+                        {{ sentimentLastUpdate }}
+                    </span>
+                    <button @click="fetchMarketSentiment" 
+                            class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                            :class="{'animate-spin': sentimentLoading}"
+                            title="刷新情绪数据">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
+
                 <!-- Indices -->
                 <div class="col-span-3 md:col-span-2 flex items-center justify-around border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 pb-2 md:pb-0 md:pr-4">
                     <div v-for="idx in marketSentiment.indices" :key="idx.name" class="flex flex-col items-center">
@@ -192,18 +207,20 @@
                     <div class="text-center">
                         <div class="text-gray-500 dark:text-gray-400 text-[10px] mb-1">市场情绪</div>
                         <div class="font-bold text-sm" :class="{
-                            'text-red-500': marketSentiment.stats.sentiment === 'High',
-                            'text-green-500': marketSentiment.stats.sentiment === 'Low' || marketSentiment.stats.sentiment === 'Panic',
-                            'text-yellow-500': marketSentiment.stats.sentiment === 'Neutral'
-                        }">{{ marketSentiment.stats.suggestion }}</div>
+                            'text-gray-500': isDataIncomplete,
+                            'text-red-500': !isDataIncomplete && marketSentiment.stats.sentiment === 'High',
+                            'text-green-500': !isDataIncomplete && (marketSentiment.stats.sentiment === 'Low' || marketSentiment.stats.sentiment === 'Panic'),
+                            'text-yellow-500': !isDataIncomplete && marketSentiment.stats.sentiment === 'Neutral'
+                        }">{{ isDataIncomplete ? '等待数据' : marketSentiment.stats.suggestion }}</div>
                     </div>
                     <div class="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden mt-1">
                         <div class="absolute top-0 left-0 h-full transition-all duration-500"
                              :class="{
-                                'bg-red-500 w-full': marketSentiment.stats.sentiment === 'High',
-                                'bg-yellow-500 w-1/2': marketSentiment.stats.sentiment === 'Neutral',
-                                'bg-green-500 w-1/4': marketSentiment.stats.sentiment === 'Low',
-                                'bg-green-800 w-0': marketSentiment.stats.sentiment === 'Panic'
+                                'bg-gray-400 w-full': isDataIncomplete,
+                                'bg-red-500 w-full': !isDataIncomplete && marketSentiment.stats.sentiment === 'High',
+                                'bg-yellow-500 w-1/2': !isDataIncomplete && marketSentiment.stats.sentiment === 'Neutral',
+                                'bg-green-500 w-1/4': !isDataIncomplete && marketSentiment.stats.sentiment === 'Low',
+                                'bg-green-800 w-0': !isDataIncomplete && marketSentiment.stats.sentiment === 'Panic'
                              }"></div>
                     </div>
                 </div>
@@ -855,6 +872,8 @@
                             suggestion: '等待数据'
                         }
                     },
+                    sentimentLoading: false,
+                    sentimentLastUpdate: null,
                     showAggressivePanel: true,
                     showManualPanel: true,
                     isDark: true,
@@ -944,6 +963,12 @@
                 },
                 filteredBrokenLimitPool() {
                     return this.brokenLimitPool.filter(s => this.checkBoardVisibility(s.code));
+                },
+                isDataIncomplete() {
+                    if (!this.marketSentiment || !this.marketSentiment.stats) return true;
+                    const s = this.marketSentiment.stats;
+                    // If total volume is 0 or undefined, or if up+down counts are 0
+                    return (s.total_volume === 0 || (s.up_count === 0 && s.down_count === 0));
                 }
             },
             methods: {
@@ -1149,11 +1174,15 @@
                     }
                 },
                 async fetchMarketSentiment() {
+                    this.sentimentLoading = true;
                     try {
                         const response = await fetch('/api/market_sentiment');
                         this.marketSentiment = await response.json();
+                        this.sentimentLastUpdate = new Date().toLocaleTimeString();
                     } catch (error) {
                         console.error('Market Sentiment fetch failed:', error);
+                    } finally {
+                        this.sentimentLoading = false;
                     }
                 },
                 getColorClass(percent) {

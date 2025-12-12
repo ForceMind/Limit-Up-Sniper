@@ -79,32 +79,29 @@ broken_limit_pool_data = []
 intraday_pool_data = [] # New global for fast intraday pool
 ANALYSIS_CACHE = {} # Cache for AI analysis results: {code: {content: str, timestamp: float}}
 
-def load_market_pools():
-    global limit_up_pool_data, broken_limit_pool_data
-    file_path = DATA_DIR / "market_pools.json"
+def load_analysis_cache():
+    """Load AI analysis cache from disk"""
+    global ANALYSIS_CACHE
+    file_path = DATA_DIR / "analysis_cache.json"
     if file_path.exists():
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                limit_up_pool_data = data.get("limit_up", [])
-                broken_limit_pool_data = data.get("broken", [])
+                ANALYSIS_CACHE = json.load(f)
         except:
             pass
 
-def save_market_pools():
+def save_analysis_cache():
+    """Save AI analysis cache to disk"""
     try:
-        file_path = DATA_DIR / "market_pools.json"
+        file_path = DATA_DIR / "analysis_cache.json"
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "limit_up": limit_up_pool_data,
-                "broken": broken_limit_pool_data,
-                "updated_at": time.time()
-            }, f, ensure_ascii=False)
+            json.dump(ANALYSIS_CACHE, f, ensure_ascii=False)
     except:
         pass
 
-# Load on startup
+# Load caches on startup
 load_market_pools()
+load_analysis_cache()
 
 async def update_market_pools_task():
     global limit_up_pool_data, broken_limit_pool_data
@@ -699,6 +696,8 @@ async def api_analyze_stock(request: StockAnalysisRequest):
             "content": result,
             "timestamp": time.time()
         }
+        # Persist cache to disk
+        save_analysis_cache()
         
     return {"status": "success", "analysis": result, "cached": False}
 
