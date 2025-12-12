@@ -1,25 +1,11 @@
-import requests
 import json
-import time
+from app.core.data_provider import data_provider
 
 def fetch_history_data(code, days=300):
     """
-    Fetch last N days of K-line data from Sina Finance.
+    Fetch last N days of K-line data.
     """
-    url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketData.getKLineData?symbol={code}&scale=240&ma=no&datalen={days}"
-    
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        resp = requests.get(url, headers=headers, timeout=5)
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            return data
-    except Exception as e:
-        print(f"Error fetching history for {code}: {e}")
-    
-    return []
+    return data_provider.fetch_history_data(code, days)
 
 def calculate_metrics(code):
     """
@@ -101,35 +87,32 @@ def calculate_metrics(code):
                     premium_sum += premium
                     premium_count += 1
 
-    # Promotion Rate (晋级率)
-    promotion_rate = 0
-    if consecutive_attempts > 0:
-        promotion_rate = int((consecutive_successes / consecutive_attempts) * 100)
-        
-    # First Board Broken Rate (首板炸板率)
-    first_broken_rate = 0
+    # Finalize metrics
+    seal_rate = 0
     if first_board_attempts > 0:
-        first_broken_rate = int((first_board_failures / first_board_attempts) * 100)
+        seal_rate = ((first_board_attempts - first_board_failures) / first_board_attempts) * 100
         
-    avg_premium = 0
+    broken_rate = 0
+    if first_board_attempts > 0:
+        broken_rate = (first_board_failures / first_board_attempts) * 100
+        
+    next_day_premium = 0
     if premium_count > 0:
-        avg_premium = round(premium_sum / premium_count, 2)
+        next_day_premium = premium_sum / premium_count
         
-    # Calculate consecutive limit up days (current streak)
+    # Calculate current limit up days (consecutive)
     limit_up_days = 0
-    if len(parsed_data) > 1:
-        # Check from last day backwards
-        for i in range(len(parsed_data) - 1, 0, -1):
-            curr = parsed_data[i]
-            prev = parsed_data[i-1]
-            if (curr['close'] / prev['close']) >= limit_threshold:
-                limit_up_days += 1
-            else:
-                break
-                
+    for i in range(len(parsed_data)-1, 0, -1):
+        curr = parsed_data[i]
+        prev = parsed_data[i-1]
+        if (curr['close'] / prev['close']) >= limit_threshold:
+            limit_up_days += 1
+        else:
+            break
+            
     return {
-        "seal_rate": f"{promotion_rate}%", # Renamed concept to Promotion Rate but kept key for compatibility if needed, but user asked to change it. Let's keep key but change meaning.
-        "broken_rate": f"{first_broken_rate}%", # Renamed concept to First Board Broken Rate
-        "next_day_premium": f"{avg_premium}%",
+        "seal_rate": round(seal_rate, 1),
+        "broken_rate": round(broken_rate, 1),
+        "next_day_premium": round(next_day_premium, 2),
         "limit_up_days": limit_up_days
     }

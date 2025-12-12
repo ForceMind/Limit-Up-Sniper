@@ -450,6 +450,7 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         # 合并两者用于判断是否仍在活跃池
         scanner_stocks = intraday_stocks + sealed_stocks
         scanner_codes = set(s['code'] for s in scanner_stocks)
+        sealed_codes = set(s['code'] for s in sealed_stocks)
         
         # 2.1 标记不再满足条件的股票为 Discarded
         for code, item in watchlist.items():
@@ -457,11 +458,16 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
             if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
                 if code not in scanner_codes:
-                    # 不在最新的扫描结果中，说明条件已变差(或已涨停)
+                    # 不在最新的扫描结果中，说明条件已变差(或已涨停但未被识别为sealed?)
                     # 标记为 Discarded，前端根据此状态显示在剔除区
                     item['strategy_type'] = 'Discarded'
                     if '已剔除' not in item['news_summary']:
                         item['news_summary'] += " (已剔除)"
+                elif code in sealed_codes:
+                    # 如果在 sealed_stocks 中，更新状态为 Sealed (或者在 news_summary 中注明)
+                    # 这样用户知道它已经封板了
+                    if '已封板' not in item['news_summary']:
+                        item['news_summary'] = f"[已封板] {item['news_summary']}"
         
         # 2.2 添加/更新当前扫描到的股票
         for stock in scanner_stocks:
@@ -469,12 +475,17 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             # 计算指标
             metrics = calculate_metrics(code)
             
+            # 如果是 sealed，在 reason 前加标记
+            reason = stock['reason']
+            if code in sealed_codes and '已封板' not in reason:
+                reason = f"[已封板] {reason}"
+            
             new_item = {
                 "code": code,
                 "name": stock['name'],
-                "news_summary": stock['reason'],
+                "news_summary": reason,
                 "concept": stock['concept'],
-                "initial_score": stock['score'],
+                "initial_score": stock.get('score', 0), # sealed stock might not have score, default 0
                 "strategy_type": stock['strategy'],
                 "seal_rate": metrics['seal_rate'],
                 "broken_rate": metrics['broken_rate'],

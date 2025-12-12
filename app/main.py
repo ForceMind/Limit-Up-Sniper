@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.core.news_analyzer import generate_watchlist, analyze_single_stock
 from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
 from app.core.stock_utils import calculate_metrics
+from app.core.data_provider import data_provider
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -125,9 +126,9 @@ async def update_intraday_pool_task():
     loop = asyncio.get_event_loop()
     while True:
         try:
-            # Only run during trading hours (approx)
+            # Only run during trading hours (approx) and weekdays
             now = datetime.now()
-            if 9 <= now.hour < 15:
+            if now.weekday() < 5 and 9 <= now.hour < 15:
                 result = await loop.run_in_executor(None, scan_intraday_limit_up)
                 if result:
                     intraday_stocks, sealed_stocks = result
@@ -169,53 +170,9 @@ async def websocket_endpoint(websocket: WebSocket):
 async def search_stock(q: str):
     """
     搜索股票 (支持代码、拼音、名称)
-    使用东方财富接口
     """
-    if not q:
-        return []
-        
-    url = "https://searchapi.eastmoney.com/api/suggest/get"
-    params = {
-        "input": q,
-        "type": "14", # 股票
-        "token": "D43BF722C8E33BDC906FB84D85E326E8",
-        "count": 5
-    }
-    
-    try:
-        # Run in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        resp = await loop.run_in_executor(None, lambda: requests.get(url, params=params, timeout=3))
-        
-        # Force UTF-8 encoding as EastMoney API might not set it correctly
-        resp.encoding = 'utf-8'
-        
-        data = resp.json()
-        if "QuotationCodeTable" in data and "Data" in data["QuotationCodeTable"]:
-            results = []
-            for item in data["QuotationCodeTable"]["Data"]:
-                # item: { "Code": "600519", "Name": "贵州茅台", "PinYin": "GZMT", "MarketType": "1" ... }
-                # MarketType: 1=SH, 2=SZ
-                market_type = item.get("MarketType")
-                code = item.get("Code")
-                name = item.get("Name")
-                
-                prefix = ""
-                if market_type == "1": prefix = "sh"
-                elif market_type == "2": prefix = "sz"
-                else: continue # 忽略其他市场
-                
-                full_code = f"{prefix}{code}"
-                results.append({
-                    "code": full_code,
-                    "name": name,
-                    "display_code": code
-                })
-            return results
-    except Exception as e:
-        print(f"Search error: {e}")
-        
-    return []
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: data_provider.search_stock(q))
 
 @app.post("/api/add_stock")
 async def add_stock(code: str):
@@ -257,26 +214,7 @@ async def add_stock(code: str):
     metrics = calculate_metrics(code)
     
     # 获取股票详细信息 (名称 + 行业/概念)
-    name = "手动添加"
-    concept = "自选"
-    
-    try:
-        # 构造 EastMoney secid
-        # sh -> 1.xxx, sz -> 0.xxx, bj -> 0.xxx (通常北证也是0)
-        secid = ""
-        if code.startswith('sh'):
-            secid = f"1.{code[2:]}"
-        else:
-            secid = f"0.{code[2:]}"
-            
-        em_url = f"http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f14,f127"
-        resp = requests.get(em_url, timeout=3)
-        em_data = resp.json()
-        if em_data and em_data.get('data'):
-            name = em_data['data'].get('f14', name)
-            concept = em_data['data'].get('f127', concept)
-    except Exception as e:
-        print(f"Error fetching stock info: {e}")
+    name, concept = data_provider.get_stock_info(code)
     
     # 添加新股票
     new_item = {
@@ -454,6 +392,12 @@ async def scheduler_loop():
         current_hour = now.hour
         current_minute = now.minute
         
+        # Weekend Check (Saturday=5, Sunday=6)
+        if now.weekday() >= 5:
+            # Sleep longer on weekends
+            await asyncio.sleep(3600)
+            continue
+
         # --- Schedule Logic ---
         interval_seconds = 3600 # Default 1h
         lookback_hours = 1
@@ -569,15 +513,19 @@ async def scheduler_loop():
              SYSTEM_CONFIG["current_status"] = "Paused"
         
         # Task 2: Refresh Quotes (Every 3 seconds)
-        try:
-            stocks = await asyncio.to_thread(get_stock_quotes)
-        except Exception as e:
-            pass
+        # Only during trading hours or shortly after
+        if now.weekday() < 5 and (9 <= current_hour < 16):
+            try:
+                stocks = await asyncio.to_thread(get_stock_quotes)
+            except Exception as e:
+                pass
             
         # Task 3: Update Limit Up Pool (Every 30 seconds)
         if current_timestamp - last_pool_update_time >= 30:
-             await asyncio.to_thread(update_limit_up_pool_task)
-             last_pool_update_time = current_timestamp
+             # Only during trading hours
+             if now.weekday() < 5 and (9 <= current_hour < 16):
+                 await asyncio.to_thread(update_limit_up_pool_task)
+                 last_pool_update_time = current_timestamp
 
         await asyncio.sleep(5) # Check every 5 seconds
 
@@ -604,308 +552,38 @@ def execute_analysis(mode="after_hours", hours=None):
         print(f"Analysis Error: {e}")
 
 
-def get_tencent_data(codes):
-    """
-    从腾讯财经接口抓取数据 (作为备用)
-    接口格式: http://qt.gtimg.cn/q=sh600519,sz000001
-    """
-    if not codes:
-        return []
-        
-    url = "http://qt.gtimg.cn/q=" + ",".join(codes)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    stocks = []
-    try:
-        response = requests.get(url, headers=headers, timeout=3)
-        # 腾讯通常返回 GBK
-        response.encoding = 'gbk'
-        content = response.text.strip()
-        
-        lines = content.split(';')
-        for line in lines:
-            if not line or '=' not in line:
-                continue
-                
-            # v_sh600519="1~贵州茅台~600519~1700.00~..."
-            parts = line.split('=')
-            code_part = parts[0]
-            data_str = parts[1].strip('"')
-            
-            code = code_part.split('_')[-1] # sh600519
-            
-            data = data_str.split('~')
-            if len(data) < 30:
-                continue
-                
-            # 腾讯数据映射
-            # 1: 名字, 3: 当前价, 4: 昨收, 5: 开盘, 31: 涨跌, 32: 涨跌幅, 33: 最高, 34: 最低
-            name = data[1]
-            current_price = float(data[3])
-            prev_close = float(data[4])
-            open_price = float(data[5])
-            high_price = float(data[33])
-            # low_price = float(data[34])
-            
-            change_percent = float(data[32])
-            
-            limit_up_price = round(prev_close * 1.1, 2) # 简略计算
-            
-            strategy_info = watchlist_map.get(code, {})
-            
-            stock_info = {
-                "code": code,
-                "name": name,
-                "current": current_price,
-                "change_percent": change_percent,
-                "high": high_price,
-                "open": open_price,
-                "prev_close": prev_close,
-                "limit_up_price": limit_up_price,
-                "is_limit_up": current_price >= limit_up_price and current_price > 0,
-                "strategy": strategy_info.get("strategy_type", "Neutral"),
-                "initial_score": strategy_info.get("initial_score", 0),
-                "concept": strategy_info.get("concept", "-"),
-                "seal_rate": strategy_info.get("seal_rate", 0),
-                "broken_rate": strategy_info.get("broken_rate", 0),
-                "next_day_premium": strategy_info.get("next_day_premium", 0),
-                "limit_up_days": strategy_info.get("limit_up_days", 0)
-            }
-            stocks.append(stock_info)
-            
-    except Exception as e:
-        print(f"Tencent API Error: {e}")
-        
-    return stocks
-
-def get_eastmoney_data(codes):
-    """
-    从东方财富接口抓取数据 (最稳定，支持所有板块)
-    """
-    if not codes:
-        return []
-        
-    # 构造 secids
-    # sh -> 1.xxx, sz -> 0.xxx, bj -> 0.xxx
-    secids = []
-    code_map = {} # secid -> original_code
-    
-    for code in codes:
-        raw_code = code.replace('sh', '').replace('sz', '').replace('bj', '')
-        market = '1' if code.startswith('sh') else '0'
-        secid = f"{market}.{raw_code}"
-        secids.append(secid)
-        code_map[secid] = code
-        
-    # 分批请求，每次最多 100 个
-    stocks = []
-    batch_size = 90
-    
-    for i in range(0, len(secids), batch_size):
-        batch = secids[i:i+batch_size]
-        url = "http://push2.eastmoney.com/api/qt/ulist/get"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "http://quote.eastmoney.com/"
-        }
-        params = {
-            "secids": ",".join(batch),
-            "fields": "f12,f14,f2,f3,f4,f18,f15,f16,f17,f139", # 代码,名称,现价,涨幅,涨跌,昨收,最高,最低,开盘,市场
-            "invt": 2,
-            "fltt": 2,
-            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "_": int(time.time() * 1000)
-        }
-        
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=5)
-            data = resp.json()
-            if not data.get('data') or not data['data'].get('diff'):
-                continue
-                
-            for item in data['data']['diff']:
-                # item: { "f12": "600519", "f14": "贵州茅台", ... }
-                # Need to map back to original code (sh/sz/bj)
-                # EastMoney returns f139 (market type)? 
-                # f139: 1=SH, 0=SZ/BJ
-                
-                raw_code = item['f12']
-                # Try to find matching code in our list
-                # Simple heuristic: check if sh{raw_code}, sz{raw_code}, bj{raw_code} is in codes
-                
-                # Better: use the secid we sent? 
-                # The response doesn't strictly return secid.
-                
-                # Reconstruct code
-                found_code = None
-                # Check watchlist map keys
-                if f"sh{raw_code}" in watchlist_map: found_code = f"sh{raw_code}"
-                elif f"sz{raw_code}" in watchlist_map: found_code = f"sz{raw_code}"
-                elif f"bj{raw_code}" in watchlist_map: found_code = f"bj{raw_code}"
-                
-                if not found_code:
-                    continue
-                    
-                current_price = item['f2']
-                if current_price == '-': current_price = 0
-                
-                prev_close = item['f18']
-                if prev_close == '-': prev_close = 0
-                
-                change_percent = item['f3']
-                if change_percent == '-': change_percent = 0
-                
-                # Calculate Limit Up
-                limit_up_price = round(prev_close * 1.1, 2) # Approx
-                
-                strategy_info = watchlist_map.get(found_code, {})
-                
-                stock_info = {
-                    "code": found_code,
-                    "name": item['f14'],
-                    "current": current_price,
-                    "change_percent": change_percent,
-                    "high": item['f15'],
-                    "open": item['f17'],
-                    "prev_close": prev_close,
-                    "limit_up_price": limit_up_price,
-                    "is_limit_up": current_price >= limit_up_price - 0.01 and change_percent > 0,
-                    "strategy": strategy_info.get("strategy_type", "Neutral"),
-                    "initial_score": strategy_info.get("initial_score", 0),
-                    "concept": strategy_info.get("concept", "-"),
-                    "seal_rate": strategy_info.get("seal_rate", 0),
-                    "broken_rate": strategy_info.get("broken_rate", 0),
-                    "next_day_premium": strategy_info.get("next_day_premium", 0),
-                    "limit_up_days": strategy_info.get("limit_up_days", 0)
-                }
-                stocks.append(stock_info)
-                
-        except Exception as e:
-            print(f"EastMoney Quote Error: {e}")
-            
-    return stocks
-
 def get_stock_quotes():
     """
-    获取股票行情，优先使用东方财富 (最全)，其次新浪
-    """
-    # 1. 尝试东方财富
-    try:
-        em_data = get_eastmoney_data(WATCH_LIST)
-        if len(em_data) >= len(WATCH_LIST) * 0.8:
-            return em_data
-    except Exception as e:
-        print(f"EastMoney source failed: {e}")
-
-    # 2. 尝试新浪
-    try:
-        sina_data = get_sina_data()
-        # 简单验证数据完整性
-        if len(sina_data) >= len(WATCH_LIST) * 0.8: # 至少获取了80%的数据
-            return sina_data
-    except Exception as e:
-        print(f"Sina source failed: {e}")
-        
-    # 3. 尝试腾讯 (作为补充或备用)
-    print("Switching to Tencent data source...")
-    return get_tencent_data(WATCH_LIST)
-
-def get_sina_data():
-    """
-    从新浪财经接口抓取数据并清洗
+    获取股票行情，使用统一的 DataProvider
     """
     if not WATCH_LIST:
         return []
         
-    # 新浪接口一次最多支持约80-100个代码，如果列表过长需要分批，这里暂不处理
-    url = "http://hq.sinajs.cn/list=" + ",".join(WATCH_LIST)
-    headers = {
-        "Referer": "http://finance.sina.com.cn",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    stocks = []
     try:
-        response = requests.get(url, headers=headers, timeout=3)
-        # 新浪接口通常返回 GBK 编码
-        response.encoding = 'gbk'
-        content = response.text.strip()
+        # Fetch raw quotes
+        raw_stocks = data_provider.fetch_quotes(WATCH_LIST)
         
-        # 解析每一行数据
-        lines = content.split('\n')
-        for line in lines:
-            if not line:
-                continue
-                
-            # 格式: var hq_str_sh600519="贵州茅台,..."
-            parts = line.split('=')
-            if len(parts) < 2:
-                continue
-                
-            code = parts[0].split('_')[-1] # 获取股票代码，如 sh600519
-            data_str = parts[1].strip('";')
-            
-            if not data_str:
-                continue
-                
-            data = data_str.split(',')
-            
-            # 确保数据字段足够
-            if len(data) < 30:
-                continue
-                
-            # 提取字段
-            name = data[0]
-            open_price = float(data[1])
-            prev_close = float(data[2])
-            current_price = float(data[3])
-            high_price = float(data[4])
-            low_price = float(data[5])
-            
-            # 如果停牌或未开盘，当前价格可能为0，取昨收
-            if current_price == 0:
-                current_price = prev_close
-
-            # 计算涨跌幅
-            if prev_close > 0:
-                change_percent = ((current_price - prev_close) / prev_close) * 100
-            else:
-                change_percent = 0.0
-            
-            # 计算粗略涨停价 (昨收 * 1.1)
-            limit_up_price = round(prev_close * 1.1, 2)
-            
-            # 获取策略信息
+        # Enrich with strategy info
+        enriched_stocks = []
+        for stock in raw_stocks:
+            code = stock['code']
             strategy_info = watchlist_map.get(code, {})
             
-            stock_info = {
-                "code": code,
-                "name": name,
-                "current": current_price,
-                "change_percent": round(change_percent, 2),
-                "high": high_price,
-                "open": open_price,
-                "prev_close": prev_close,
-                "limit_up_price": limit_up_price,
-                "is_limit_up": current_price >= limit_up_price,
-                # 注入策略数据
-                "strategy": strategy_info.get("strategy_type", "Neutral"),
-                "initial_score": strategy_info.get("initial_score", 0),
-                "concept": strategy_info.get("concept", "-"),
-                # 注入高级指标
-                "seal_rate": strategy_info.get("seal_rate", 0),
-                "broken_rate": strategy_info.get("broken_rate", 0),
-                "next_day_premium": strategy_info.get("next_day_premium", 0),
-                "limit_up_days": strategy_info.get("limit_up_days", 0)
-            }
-            stocks.append(stock_info)
+            # Merge strategy info
+            stock['strategy'] = strategy_info.get("strategy_type", "Neutral")
+            stock['initial_score'] = strategy_info.get("initial_score", 0)
+            stock['concept'] = strategy_info.get("concept", "-")
+            stock['seal_rate'] = strategy_info.get("seal_rate", 0)
+            stock['broken_rate'] = strategy_info.get("broken_rate", 0)
+            stock['next_day_premium'] = strategy_info.get("next_day_premium", 0)
+            stock['limit_up_days'] = strategy_info.get("limit_up_days", 0)
             
+            enriched_stocks.append(stock)
+            
+        return enriched_stocks
     except Exception as e:
-        print(f"Error fetching data: {e}")
-        
-    return stocks
+        print(f"Error fetching quotes: {e}")
+        return []
 
 @app.post("/api/watchlist/remove")
 async def remove_from_watchlist(request: Request):
