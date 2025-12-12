@@ -4,7 +4,6 @@ import pandas as pd
 import time
 import json
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 
 class DataProvider:
     def __init__(self, logger=None):
@@ -12,6 +11,8 @@ class DataProvider:
         self._last_market_df = None
         self._last_market_ts = 0
         self._last_failure_ts = 0
+        self._base_info_df = None
+        self._base_info_ts = 0
 
     def log(self, msg):
         if self.logger:
@@ -161,7 +162,18 @@ class DataProvider:
         os.environ.pop("HTTPS_PROXY", None)
 
         try:
-            # 1. Try AKShare (EastMoney) - Standard
+            # 1. Try Sina Paged (Slow & Steady) - Primary as requested
+            try:
+                self.log("[*] Fetching all market data (Sina Paged)...")
+                df = self._fetch_sina_market_paged()
+                if df is not None and not df.empty:
+                    self._last_market_df = df.copy()
+                    self._last_market_ts = now_ts
+                    return df
+            except Exception as e:
+                self.log(f"[!] Sina Paged failed: {e}")
+
+            # 2. Try AKShare (EastMoney) - Fallback
             try:
                 self.log("[*] Fetching all market data (AKShare/EM)...")
                 df = ak.stock_zh_a_spot_em()
@@ -181,30 +193,17 @@ class DataProvider:
                 return df
             except Exception as e:
                 self.log(f"[!] AKShare/EM failed: {e}")
-            
-            # 2. Try Manual EM (Fallback for Proxy/Connection Issues) - Preferred Fallback
+
+            # 3. Try Manual EM Paged (Backup)
             try:
-                self.log("[*] Fetching all market data (Manual EM)...")
-                df = self._fetch_em_spot_manual()
+                self.log("[*] Fetching all market data (Manual EM Paged)...")
+                df = self._fetch_em_market_paged()
                 if df is not None and not df.empty:
                     self._last_market_df = df.copy()
                     self._last_market_ts = now_ts
                     return df
             except Exception as e:
-                self.log(f"[!] Manual EM failed: {e}")
-
-            # 3. Try Sina JSON API (Direct) - Fast Fallback
-            try:
-                self.log("[*] Fetching all market data (Sina JSON API)...")
-                df = self._fetch_sina_market_json()
-                if df is not None and not df.empty:
-                    self._last_market_df = df.copy()
-                    self._last_market_ts = now_ts
-                    return df
-            except Exception as e:
-                self.log(f"[!] Sina JSON failed: {e}")
-
-            # REMOVED: ak.stock_zh_a_spot() (Sina) - Too slow (69 requests) and causes IP ban
+                self.log(f"[!] Manual EM Paged failed: {e}")
 
             # 4. Try Tushare (Requires TUSHARE_TOKEN and package installed)
             try:
@@ -375,50 +374,276 @@ class DataProvider:
             
         return name, concept
 
-    def _fetch_em_spot_manual(self):
+    def _generate_candidate_codes(self):
+        """Generate a list of potential A-share codes to scan (Main Board + ChiNext only)."""
+        codes = []
+        # Shanghai Main: 600000-603999, 605000-605999
+        for i in range(600000, 604000): codes.append(f"sh{i}")
+        for i in range(605000, 606000): codes.append(f"sh{i}")
+        # Shenzhen Main: 000001-003999
+        for i in range(1, 4000): codes.append(f"sz{i:06d}")
+        # ChiNext: 300000-301999
+        for i in range(300000, 302000): codes.append(f"sz{i}")
+        return codes
+
+    def _is_target_stock(self, code):
         """
-        Manual implementation of EastMoney Spot Data to bypass proxy issues.
-        Uses HTTP and disables proxies; smaller page size to reduce load.
+        Filter for A-share Main Board and ChiNext.
+        Exclude STAR (688) and BSE (8/4/92/bj).
         """
+        code = str(code)
+        c = code.replace('sh', '').replace('sz', '').replace('bj', '')
+        
+        # Exclude BSE
+        if c.startswith('8') or c.startswith('4') or c.startswith('92'):
+            return False
+        # Exclude STAR
+        if c.startswith('68'):
+            return False
+        # Include Main Board (60, 00) and ChiNext (30)
+        if c.startswith('60') or c.startswith('00') or c.startswith('30'):
+            return True
+        return False
+
+    def _update_base_info(self):
+        """Fetch base info (Name, CircMV, CircShares) from AKShare."""
         try:
-            url = "http://82.push2.eastmoney.com/api/qt/clist/get"
-            params = {
-                "pn": "1", "pz": "2000", "po": "1", "np": "1", 
-                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                "fltt": "2", "invt": "2", "fid": "f3",
-                "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
-                "fields": "f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+            self.log("[*] Updating base stock info from AKShare...")
+            df = ak.stock_zh_a_spot_em()
+            
+            # Rename
+            rename_map = {
+                '代码': 'code', '名称': 'name', '流通市值': 'circ_mv', '最新价': 'price'
             }
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "http://quote.eastmoney.com/",
-            }
+            df = df.rename(columns=rename_map)
             
-            session = requests.Session()
-            session.trust_env = False # Ignore system proxy
+            valid_rows = []
+            for _, row in df.iterrows():
+                code = str(row['code'])
+                if self._is_target_stock(code):
+                    if code.startswith('6'): full_code = f"sh{code}"
+                    elif code.startswith('0') or code.startswith('3'): full_code = f"sz{code}"
+                    else: continue
+                    
+                    try:
+                        price = float(row['price'])
+                        circ_mv = float(row['circ_mv'])
+                        if price > 0:
+                            circ_shares = circ_mv / price
+                        else:
+                            circ_shares = 0
+                    except:
+                        circ_shares = 0
+                        circ_mv = 0
+                        
+                    valid_rows.append({
+                        'code': full_code,
+                        'name': row['name'],
+                        'circ_mv': circ_mv,
+                        'circ_shares': circ_shares
+                    })
             
-            resp = session.get(url, params=params, headers=headers, timeout=10)
-            data = resp.json()
+            self._base_info_df = pd.DataFrame(valid_rows)
+            self._base_info_ts = time.time()
+            self.log(f"[*] Base info updated. {len(self._base_info_df)} stocks loaded.")
             
-            if data and data.get('data') and data['data'].get('diff'):
-                rows = data['data']['diff']
-                # Convert to DataFrame
-                df = pd.DataFrame(rows)
-                rename_map = {
-                    'f12': 'code', 'f14': 'name', 'f2': 'current', 'f3': 'change_percent',
-                    'f8': 'turnover', 'f20': 'circ_mv', 'f18': 'prev_close',
-                    'f15': 'high', 'f16': 'low', 'f17': 'open', 'f6': 'amount'
-                }
-                df = df.rename(columns=rename_map)
-                
-                for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                
-                return df
         except Exception as e:
-            self.log(f"[!] Manual EM fetch failed: {e}")
-        return None
+            self.log(f"[!] Failed to update base info from AKShare: {e}")
+
+    def _fetch_sina_market_paged(self):
+        """
+        Fetch market data by iterating through candidate codes.
+        Uses hq.sinajs.cn which is not blocked.
+        """
+        # 1. Ensure base info is available (refresh if older than 1 hour)
+        if self._base_info_df is None or time.time() - self._base_info_ts > 3600:
+            self._update_base_info()
+            
+        # 2. Prepare list
+        if self._base_info_df is not None and not self._base_info_df.empty:
+            candidates = self._base_info_df['code'].tolist()
+            base_map = self._base_info_df.set_index('code').to_dict('index')
+        else:
+            candidates = self._generate_candidate_codes()
+            base_map = {}
+
+        valid_stocks = []
+        batch_size = 200 # Reduced as requested
+        
+        self.log(f"[*] Scanning {len(candidates)} stocks via Sina (Batch 200)...")
+        
+        with requests.Session() as session:
+            session.trust_env = False
+            headers = {"Referer": "http://finance.sina.com.cn"}
+            
+            for i in range(0, len(candidates), batch_size):
+                batch = candidates[i:i+batch_size]
+                url = "http://hq.sinajs.cn/list=" + ",".join(batch)
+                
+                try:
+                    resp = session.get(url, headers=headers, timeout=5)
+                    resp.encoding = 'gbk'
+                    
+                    for line in resp.text.split('\n'):
+                        if not line: continue
+                        parts = line.split('=')
+                        if len(parts) < 2: continue
+                        
+                        code = parts[0].split('_')[-1]
+                        data_str = parts[1].strip('";')
+                        if not data_str: continue # Invalid code
+                        
+                        data = data_str.split(',')
+                        if len(data) < 30: continue
+                        
+                        name = data[0]
+                        open_price = float(data[1])
+                        prev_close = float(data[2])
+                        current = float(data[3])
+                        high = float(data[4])
+                        low = float(data[5])
+                        volume = float(data[8])
+                        amount = float(data[9])
+                        
+                        # Filter out inactive stocks
+                        if open_price == 0 and volume == 0:
+                            continue 
+                            
+                        change_percent = 0.0
+                        if prev_close > 0:
+                            change_percent = ((current - prev_close) / prev_close) * 100
+                        
+                        # Merge with base info
+                        base_data = base_map.get(code, {})
+                        circ_shares = base_data.get('circ_shares', 0)
+                        
+                        # Calculate Turnover
+                        turnover = 0.0
+                        if circ_shares > 0:
+                            turnover = (volume / circ_shares) * 100
+                            
+                        # Calculate CircMV (Realtime)
+                        circ_mv = base_data.get('circ_mv', 0)
+                        if circ_shares > 0:
+                            circ_mv = circ_shares * current
+
+                        valid_stocks.append({
+                            "code": code,
+                            "name": name,
+                            "current": current,
+                            "change_percent": round(change_percent, 2),
+                            "open": open_price,
+                            "high": high,
+                            "low": low,
+                            "prev_close": prev_close,
+                            "volume": volume,
+                            "amount": amount,
+                            "turnover": round(turnover, 2),
+                            "circ_mv": circ_mv
+                        })
+                        
+                    time.sleep(0.5) # Slow fetch as requested
+                    
+                except Exception as e:
+                    self.log(f"[!] Batch {i} failed: {e}")
+                    time.sleep(1)
+        
+        if not valid_stocks:
+            return None
+            
+        return pd.DataFrame(valid_stocks)
+
+    def _fetch_em_market_paged(self):
+        """
+        Robust paged fetch for EastMoney.
+        Fetches ~5500 stocks in pages of 500 to avoid timeouts/blocks.
+        """
+        all_data = []
+        page = 1
+        page_size = 500 # Safe size
+        max_pages = 20 # Safety break
+        
+        # Standard headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "http://quote.eastmoney.com/",
+            "Connection": "keep-alive"
+        }
+        
+        # Use a session for keep-alive
+        with requests.Session() as session:
+            session.trust_env = False # No proxy
+            
+            while page <= max_pages:
+                try:
+                    url = "http://82.push2.eastmoney.com/api/qt/clist/get"
+                    params = {
+                        "pn": str(page),
+                        "pz": str(page_size),
+                        "po": "1",
+                        "np": "1",
+                        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                        "fltt": "2",
+                        "invt": "2",
+                        "fid": "f3",
+                        "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+                        "fields": "f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+                    }
+                    
+                    resp = session.get(url, params=params, headers=headers, timeout=5)
+                    data = resp.json()
+                    
+                    if not data or 'data' not in data or 'diff' not in data['data']:
+                        break # No more data or error
+                        
+                    rows = data['data']['diff']
+                    if not rows:
+                        break
+                        
+                    all_data.extend(rows)
+                    
+                    # If we got fewer rows than page_size, we are done
+                    if len(rows) < page_size:
+                        break
+                        
+                    page += 1
+                    time.sleep(0.3) # Sleep to be nice
+                    
+                except Exception as e:
+                    self.log(f"[!] EM Page {page} failed: {e}")
+                    # Retry once
+                    time.sleep(1)
+                    try:
+                        resp = session.get(url, params=params, headers=headers, timeout=5)
+                        data = resp.json()
+                        if data and 'data' in data and 'diff' in data['data']:
+                            rows = data['data']['diff']
+                            all_data.extend(rows)
+                            if len(rows) < page_size: break
+                            page += 1
+                            continue
+                    except:
+                        pass # Give up on this page
+                    
+                    page += 1 # Move on
+                    
+        if not all_data:
+            return None
+            
+        # Convert to DataFrame
+        df = pd.DataFrame(all_data)
+        rename_map = {
+            'f12': 'code', 'f14': 'name', 'f2': 'current', 'f3': 'change_percent',
+            'f8': 'turnover', 'f20': 'circ_mv', 'f18': 'prev_close',
+            'f15': 'high', 'f16': 'low', 'f17': 'open', 'f6': 'amount'
+        }
+        df = df.rename(columns=rename_map)
+        
+        for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        return df
 
     def _fetch_sina_market_json(self):
         """Fallback: use Sina Market_Center JSON API for full market data."""

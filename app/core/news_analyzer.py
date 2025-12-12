@@ -5,7 +5,6 @@ from datetime import datetime
 import os
 import re
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.core.stock_utils import calculate_metrics
 from app.core.market_scanner import scan_intraday_limit_up, get_market_overview, scan_limit_up_pool, scan_broken_limit_pool
 
@@ -68,9 +67,9 @@ def get_market_data(logger=None):
 
 def get_cls_news(hours=12, logger=None):
     """
-    抓取财联社电报最近 N 小时的数据 (多线程并发)
+    抓取财联社电报最近 N 小时的数据 (串行)
     """
-    msg = f"[*] 正在抓取最近 {hours} 小时的全网舆情 (来源: 财联社, 多线程)..."
+    msg = f"[*] 正在抓取最近 {hours} 小时的全网舆情 (来源: 财联社)..."
     print(msg)
     if logger: logger(msg)
 
@@ -92,9 +91,7 @@ def get_cls_news(hours=12, logger=None):
     session = requests.Session()
     last_time = current_time
     
-    # 既然用户强烈要求多线程，我们可以尝试并发抓取不同来源？
-    # 目前只有财联社。
-    # 让我们优化为：使用 Session + 减少 sleep
+    # 移除多线程，使用串行抓取
     
     for page in range(5): 
         params = {
