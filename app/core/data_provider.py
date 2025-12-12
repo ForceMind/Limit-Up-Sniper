@@ -11,6 +11,7 @@ class DataProvider:
         self.logger = logger
         self._last_market_df = None
         self._last_market_ts = 0
+        self._last_failure_ts = 0
 
     def log(self, msg):
         if self.logger:
@@ -140,10 +141,17 @@ class DataProvider:
         Fetch ALL stocks for market overview and scanning.
         Returns DataFrame.
         """
-        # Throttle to reduce provider pressure: reuse cache within 5 minutes
         now_ts = time.time()
+        
+        # Throttle to reduce provider pressure: reuse cache within 5 minutes
         if self._last_market_df is not None and now_ts - self._last_market_ts < 300:
             return self._last_market_df.copy()
+
+        # Cooldown on failure: if failed recently (within 60s), return None or stale cache
+        if now_ts - self._last_failure_ts < 60:
+            if self._last_market_df is not None:
+                return self._last_market_df.copy()
+            return None
 
         # Helper to temporarily unset proxy
         import os
@@ -153,7 +161,7 @@ class DataProvider:
         os.environ.pop("HTTPS_PROXY", None)
 
         try:
-            # 1. Try AKShare (EastMoney)
+            # 1. Try AKShare (EastMoney) - Standard
             try:
                 self.log("[*] Fetching all market data (AKShare/EM)...")
                 df = ak.stock_zh_a_spot_em()
@@ -167,44 +175,14 @@ class DataProvider:
                 for col in ['current', 'change_percent', 'speed', 'turnover', 'circ_mv', 'prev_close', 'high']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                return df
-            except Exception as e:
-                self.log(f"[!] AKShare/EM failed: {e}")
                 
-            # 2. Try Sina (AKShare)
-            try:
-                self.log("[*] Fetching all market data (Sina)...")
-                df = ak.stock_zh_a_spot()
-                rename_map = {
-                    '代码': 'code', '名称': 'name', '最新价': 'current', '涨跌幅': 'change_percent',
-                    '昨收': 'prev_close', '成交额': 'amount', '最高': 'high'
-                }
-                df = df.rename(columns=rename_map)
-                # Add missing columns
-                for col in ['speed', 'turnover', 'circ_mv']:
-                    df[col] = 0.0
-                
-                for col in ['current', 'change_percent', 'prev_close', 'high']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
                 self._last_market_df = df.copy()
                 self._last_market_ts = now_ts
                 return df
             except Exception as e:
-                self.log(f"[!] Sina failed: {e}")
+                self.log(f"[!] AKShare/EM failed: {e}")
             
-            # 3. Try Sina JSON API (direct, no akshare)
-            try:
-                self.log("[*] Fetching all market data (Sina JSON API)...")
-                df = self._fetch_sina_market_json()
-                if df is not None and not df.empty:
-                    self._last_market_df = df.copy()
-                    self._last_market_ts = now_ts
-                    return df
-            except Exception as e:
-                self.log(f"[!] Sina JSON failed: {e}")
-            
-            # 4. Try Manual EM (Fallback for Proxy Issues)
+            # 2. Try Manual EM (Fallback for Proxy/Connection Issues) - Preferred Fallback
             try:
                 self.log("[*] Fetching all market data (Manual EM)...")
                 df = self._fetch_em_spot_manual()
@@ -215,7 +193,20 @@ class DataProvider:
             except Exception as e:
                 self.log(f"[!] Manual EM failed: {e}")
 
-            # 5. Try Tushare (Requires TUSHARE_TOKEN and package installed)
+            # 3. Try Sina JSON API (Direct) - Fast Fallback
+            try:
+                self.log("[*] Fetching all market data (Sina JSON API)...")
+                df = self._fetch_sina_market_json()
+                if df is not None and not df.empty:
+                    self._last_market_df = df.copy()
+                    self._last_market_ts = now_ts
+                    return df
+            except Exception as e:
+                self.log(f"[!] Sina JSON failed: {e}")
+
+            # REMOVED: ak.stock_zh_a_spot() (Sina) - Too slow (69 requests) and causes IP ban
+
+            # 4. Try Tushare (Requires TUSHARE_TOKEN and package installed)
             try:
                 self.log("[*] Fetching all market data (Tushare)...")
                 df = self._fetch_tushare_spot()
@@ -227,6 +218,7 @@ class DataProvider:
                 self.log(f"[!] Tushare failed: {e}")
                 
             # Fallback: return last cache even if stale
+            self._last_failure_ts = now_ts # Mark failure
             if self._last_market_df is not None:
                 return self._last_market_df.copy()
             return None

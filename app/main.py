@@ -170,9 +170,14 @@ async def update_intraday_pool_task():
                             if s['code'] not in existing_codes:
                                 limit_up_pool_data.append(s)
                                 existing_codes.add(s['code'])
+            
+            # Normal sleep
+            await asyncio.sleep(10)
+            
         except Exception as e:
             print(f"Intraday scan error: {e}")
-        await asyncio.sleep(10) # Fast update
+            # Sleep longer on error to avoid hammering
+            await asyncio.sleep(60)
 
 if not WATCH_LIST:
     WATCH_LIST = ['sh600519', 'sz002405', 'sz300059']
