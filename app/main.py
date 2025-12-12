@@ -25,6 +25,9 @@ DATA_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
 
+# Mount static files
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
+
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 # WebSocket Manager
@@ -180,7 +183,13 @@ async def search_stock(q: str):
     }
     
     try:
-        resp = requests.get(url, params=params, timeout=3)
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(None, lambda: requests.get(url, params=params, timeout=3))
+        
+        # Force UTF-8 encoding as EastMoney API might not set it correctly
+        resp.encoding = 'utf-8'
+        
         data = resp.json()
         if "QuotationCodeTable" in data and "Data" in data["QuotationCodeTable"]:
             results = []
@@ -950,7 +959,8 @@ async def api_intraday_pool():
 @app.get("/api/market_sentiment")
 async def api_market_sentiment():
     """获取大盘情绪数据"""
-    return get_market_overview()
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_market_overview)
 
 class StockAnalysisRequest(BaseModel):
     code: str

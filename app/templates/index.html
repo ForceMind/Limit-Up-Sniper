@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>涨停狙击手 (Limit-Up Sniper)</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -738,13 +739,8 @@
                         <button @click="reAnalyzeStock" 
                                 class="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-sm flex items-center gap-1"
                                 :disabled="isAnalyzingStock">
-                            <span v-if="isAnalyzingStock" class="animate-spin">↻</span>
-                            <span v-else>↻</span>
+                            <span>↻</span>
                             重新分析
-                        </button>
-                        <button @click="showAnalysisModal = false" 
-                                class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm">
-                            关闭
                         </button>
                     </div>
                     <div class="text-xs text-gray-500 text-center">
