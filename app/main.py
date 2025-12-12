@@ -65,6 +65,7 @@ watchlist_map = {item['code']: item for item in watchlist_data}
 WATCH_LIST = list(watchlist_map.keys())
 limit_up_pool_data = []
 broken_limit_pool_data = []
+intraday_pool_data = [] # New global for fast intraday pool
 
 def load_market_pools():
     global limit_up_pool_data, broken_limit_pool_data
@@ -100,11 +101,11 @@ async def update_market_pools_task():
         try:
             # Run blocking IO in executor
             new_limit_up = await loop.run_in_executor(None, scan_limit_up_pool)
-            if new_limit_up:
+            if new_limit_up is not None: # Only update if not None (failed)
                 limit_up_pool_data = new_limit_up
             
             new_broken = await loop.run_in_executor(None, scan_broken_limit_pool)
-            if new_broken:
+            if new_broken is not None:
                 broken_limit_pool_data = new_broken
                 
             await loop.run_in_executor(None, save_market_pools)
@@ -112,6 +113,23 @@ async def update_market_pools_task():
             print(f"Pool update error: {e}")
         
         await asyncio.sleep(10) # Update every 10 seconds
+
+async def update_intraday_pool_task():
+    """Fast loop for intraday scanner"""
+    global intraday_pool_data
+    from app.core.market_scanner import scan_intraday_limit_up
+    loop = asyncio.get_event_loop()
+    while True:
+        try:
+            # Only run during trading hours (approx)
+            now = datetime.now()
+            if 9 <= now.hour < 15:
+                new_data = await loop.run_in_executor(None, scan_intraday_limit_up)
+                if new_data:
+                    intraday_pool_data = new_data
+        except Exception as e:
+            print(f"Intraday scan error: {e}")
+        await asyncio.sleep(10) # Fast update
 
 if not WATCH_LIST:
     WATCH_LIST = ['sh600519', 'sz002405', 'sz300059']
@@ -203,9 +221,18 @@ async def add_stock(code: str):
     if not (code.startswith('sh') or code.startswith('sz') or code.startswith('bj')):
         return {"status": "error", "message": "Invalid code format"}
         
-    # 如果已存在，忽略
+    # 如果已存在，强制更新为 Manual 策略
     if code in watchlist_map:
-        return {"status": "success", "message": "Already exists"}
+        watchlist_map[code]['strategy_type'] = 'Manual'
+        watchlist_map[code]['news_summary'] = '手动添加 (覆盖)'
+        # Save
+        try:
+            file_path = DATA_DIR / "watchlist.json"
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error saving watchlist: {e}")
+        return {"status": "success", "message": "Updated to Manual"}
         
     # 计算高级指标
     metrics = calculate_metrics(code)
@@ -318,6 +345,8 @@ async def startup_event():
     asyncio.create_task(scheduler_loop())
     # Start market pool updater
     asyncio.create_task(update_market_pools_task())
+    # Start fast intraday scanner
+    asyncio.create_task(update_intraday_pool_task())
     
     # 启动时立即执行一次盘中扫描，确保列表不为空
     print("Startup: Running initial intraday scan...")
@@ -848,10 +877,17 @@ async def api_limit_up_pool():
 
 @app.get("/api/intraday_pool")
 async def api_intraday_pool():
-    """直接获取盘中打板扫描结果"""
-    from market_scanner import scan_intraday_limit_up
+    """直接获取盘中打板扫描结果 (优先返回缓存)"""
+    global intraday_pool_data
+    if intraday_pool_data:
+        return intraday_pool_data
+        
+    # Fallback if empty (e.g. startup)
+    from app.core.market_scanner import scan_intraday_limit_up
     loop = asyncio.get_event_loop()
     stocks = await loop.run_in_executor(None, scan_intraday_limit_up)
+    if stocks:
+        intraday_pool_data = stocks
     return stocks
 
 @app.get("/api/market_sentiment")

@@ -219,6 +219,7 @@ def scan_limit_up_pool(logger=None):
             
     except Exception as e:
         if logger: logger(f"[!] 扫描涨停池失败: {e}")
+        return None # Return None to indicate failure
         
     return found_stocks
 
@@ -374,13 +375,13 @@ def get_market_overview(logger=None):
             params = base_params.copy()
             params["pn"] = page
             try:
-                resp = requests.get(url, params=params, timeout=5) # Increase timeout
+                resp = requests.get(url, params=params, timeout=10) # Increase timeout to 10s
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get('data') and data['data'].get('diff'):
                         return data['data']['diff']
-            except:
-                pass
+            except Exception as e:
+                if logger: logger(f"[!] Fetch page {page} failed: {e}")
             return []
 
         # 并发抓取 2 页 (覆盖约 6000 只股票)
@@ -388,6 +389,7 @@ def get_market_overview(logger=None):
             futures = [executor.submit(fetch_page, page) for page in range(1, 3)]
             for future in as_completed(futures):
                 stocks = future.result()
+                if not stocks: continue # Skip empty results
                 for s in stocks:
                     chg = s.get('f3')
                     if chg is None: continue
@@ -402,10 +404,12 @@ def get_market_overview(logger=None):
                     else:
                         flat += 1
         
-        overview["stats"]["up_count"] = up
-        overview["stats"]["down_count"] = down
-        overview["stats"]["flat_count"] = flat
-        overview["stats"]["limit_down_count"] = limit_down
+        # Only update if we got some data
+        if up + down + flat > 0:
+            overview["stats"]["up_count"] = up
+            overview["stats"]["down_count"] = down
+            overview["stats"]["flat_count"] = flat
+            overview["stats"]["limit_down_count"] = limit_down
             
     except Exception as e:
         if logger: logger(f"[!] 获取涨跌分布失败: {e}")
@@ -414,10 +418,12 @@ def get_market_overview(logger=None):
     try:
         # 直接使用通用接口获取数据，不再尝试失效的专用接口
         zt_list = scan_limit_up_pool(logger)
-        overview["stats"]["limit_up_count"] = len(zt_list)
+        if zt_list is not None:
+            overview["stats"]["limit_up_count"] = len(zt_list)
         
         zb_list = scan_broken_limit_pool(logger)
-        overview["stats"]["broken_count"] = len(zb_list)
+        if zb_list is not None:
+            overview["stats"]["broken_count"] = len(zb_list)
             
     except Exception as e:
         if logger: logger(f"[!] 获取涨停统计失败: {e}")
