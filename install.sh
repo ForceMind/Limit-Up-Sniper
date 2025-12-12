@@ -46,7 +46,7 @@ DEFAULT_KEY=""
 SERVICE_FILE="/etc/systemd/system/limit-up-sniper.service"
 if [ -f "$SERVICE_FILE" ]; then
     # 提取 Key (假设格式为 Environment="DEEPSEEK_API_KEY=sk-...")
-    EXISTING_KEY=$(grep "DEEPSEEK_API_KEY" $SERVICE_FILE | cut -d'=' -f3 | tr -d '"')
+    EXISTING_KEY=$(grep "DEEPSEEK_API_KEY" $SERVICE_FILE | cut -d'=' -f3- | tr -d '"')
     if [ ! -z "$EXISTING_KEY" ]; then
         DEFAULT_KEY=$EXISTING_KEY
         echo "检测到现有 API Key: ${DEFAULT_KEY:0:5}******${DEFAULT_KEY: -4}"

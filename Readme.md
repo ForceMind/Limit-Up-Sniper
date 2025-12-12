@@ -45,39 +45,40 @@ git clone <repository-url>
 cd Limit-Up-Sniper
 ```
 
-### 2. 安装依赖
+### 2. Windows 快速启动 (推荐)
+
+我们提供了 Windows 批处理脚本，方便一键安装和运行。
+
+1.  **安装**: 双击运行 `install.bat`。
+    *   自动创建虚拟环境并安装依赖。
+    *   提示输入 Deepseek API Key。
+2.  **运行**: 双击运行 `run.bat`。
+    *   自动启动服务并打开浏览器。
+3.  **更新**: 双击运行 `update.bat`。
+
+### 3. Linux / Mac 手动启动
+
+#### 安装依赖
 
 ```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. 配置 API Key
+#### 配置 API Key
 
-为了安全起见，**不要**直接修改代码。请在终端中设置环境变量：
-
-**Windows (PowerShell):**
-```powershell
-$env:DEEPSEEK_API_KEY="sk-你的Deepseek密钥"
-```
-
-**Linux / Mac:**
 ```bash
 export DEEPSEEK_API_KEY="sk-你的Deepseek密钥"
 ```
 
-### 4. 启动服务
+#### 启动服务
 
-在同一个终端窗口中运行：
-
-```bash
-python run.py
-```
-或者使用 uvicorn 直接启动：
 ```bash
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### 5. 访问系统
+### 4. 访问系统
 
 打开浏览器访问：[http://127.0.0.1:8000](http://127.0.0.1:8000)
 
