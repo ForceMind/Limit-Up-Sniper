@@ -66,6 +66,10 @@ def scan_intraday_limit_up(logger=None):
             # 0. 过滤北证
             if FILTER_BSE and is_bse_stock(code):
                 continue
+            
+            # 0.1 过滤非A股 (如港股)
+            if not code.isdigit() or len(code) != 6:
+                continue
 
             # 1. 动态涨幅过滤
             is_20cm = is_20cm_stock(code)
@@ -127,56 +131,87 @@ def scan_intraday_limit_up(logger=None):
 
 def scan_limit_up_pool(logger=None):
     """
-    扫描已涨停的股票 (使用 AKShare 接口)
+    扫描已涨停的股票 (使用东方财富原生接口，替代 AKShare)
     """
-    if logger: logger("[*] 正在扫描已涨停股票 (AKShare)...")
+    if logger: logger("[*] 正在扫描已涨停股票 (EastMoney Native)...")
+    
+    url = "http://push2.eastmoney.com/api/qt/clist/get"
+    params = {
+        "pn": 1,
+        "pz": 2000, # 获取前2000个涨幅最高的
+        "po": 1,
+        "np": 1,
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": 2,
+        "invt": 2,
+        "fid": "f3", # 按涨幅排序
+        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048", # 沪深A股 + 北证
+        "fields": "f12,f14,f3,f2,f18,f8,f21", # 代码,名称,涨幅,现价,昨收,换手,流通市值
+        "_": int(time.time() * 1000)
+    }
     
     found_stocks = []
     
     try:
-        # 使用 AKShare 获取涨停股池
-        # date 默认使用最新交易日
-        df = ak.stock_zt_pool_em(date=datetime.now().strftime("%Y%m%d"))
-        
-        if df is None or df.empty:
-            if logger: logger("[!] AKShare 返回数据为空")
+        resp = requests.get(url, params=params, timeout=5)
+        data = resp.json()
+        if not data.get('data'):
             return []
             
-        for _, row in df.iterrows():
-            code = str(row['代码'])
-            name = str(row['名称'])
-            change_percent = round(float(row['涨跌幅']), 2)
-            current = round(float(row['最新价']), 2)
-            turnover = round(float(row['换手率']), 2) if '换手率' in row else 0
-            circ_mv = float(row['流通市值']) if '流通市值' in row else 0
+        stock_list = data['data']['diff']
+        
+        for s in stock_list:
+            change_percent = s['f3']
+            current = s['f2']
+            prev_close = s['f18']
+            code = s['f12']
+            name = s['f14']
+            turnover = s['f8']
+            circ_mv = s.get('f21', 0)
             
-            # 0. 过滤北证
+            # 0. 过滤北证 (如果配置了)
             if FILTER_BSE and is_bse_stock(code):
                 continue
             
-            # 排除 ST
-            if 'ST' in name:
+            # 0.1 过滤非A股
+            if not code.isdigit() or len(code) != 6:
                 continue
                 
+            # 1. 判定涨停
+            # 简单判定: 涨幅 > 9.5% (主板) 或 > 19.5% (创业/科创/北证)
+            # 更严谨判定: 现价 >= 昨收 * 1.1 (或 1.2/1.3)
+            
+            is_20cm = is_20cm_stock(code)
+            is_30cm = is_bse_stock(code)
+            
+            limit_ratio = 1.1
+            if is_20cm: limit_ratio = 1.2
+            if is_30cm: limit_ratio = 1.3
+            
+            limit_up_price = round(prev_close * limit_ratio, 2)
+            
+            # 允许 1 分钱误差
+            if current < limit_up_price - 0.01:
+                continue
+                
+            # 必须是正涨幅 (排除跌停)
+            if change_percent < 0:
+                continue
+
             # 格式化代码
             if is_bse_stock(code):
                 full_code = f"bj{code}"
             else:
                 full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
-            # 连板数
-            limit_days = str(row['连板数'])
-            reason = f"{limit_days}连板" if limit_days else "涨停"
-            
             found_stocks.append({
                 "code": full_code,
                 "name": name,
                 "current": current,
                 "change_percent": change_percent,
-                "speed": 0, 
-                "time": str(row['首次封板时间']), 
-                "concept": str(row['所属行业']), 
-                "reason": reason,
+                "time": "-", # 原生接口不返回封板时间，暂空
+                "concept": "-", # 原生接口不返回行业，暂空
+                "reason": "涨停",
                 "strategy": "LimitUp",
                 "circulation_value": circ_mv,
                 "turnover": turnover
@@ -186,6 +221,7 @@ def scan_limit_up_pool(logger=None):
         if logger: logger(f"[!] 扫描涨停池失败: {e}")
         
     return found_stocks
+
 
 def scan_broken_limit_pool(logger=None):
     """

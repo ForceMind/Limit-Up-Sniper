@@ -41,6 +41,16 @@ else
     echo "未找到虚拟环境，跳过依赖更新。"
 fi
 
+# 3.1 检查并修复 Service 文件路径 (针对 v2.0 结构变更)
+SERVICE_FILE="/etc/systemd/system/limit-up-sniper.service"
+if [ -f "$SERVICE_FILE" ]; then
+    if grep -q "uvicorn main:app" "$SERVICE_FILE"; then
+        echo -e "${YELLOW}[Fix] 检测到旧版服务配置，正在更新为 app.main:app...${NC}"
+        sed -i 's/uvicorn main:app/uvicorn app.main:app/g' "$SERVICE_FILE"
+        systemctl daemon-reload
+    fi
+fi
+
 # 4. 重启服务
 echo -e "${YELLOW}[3/3] 重启服务...${NC}"
 if systemctl is-active --quiet limit-up-sniper; then

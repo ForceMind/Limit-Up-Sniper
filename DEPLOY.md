@@ -111,7 +111,7 @@ Group=root
 WorkingDirectory=/root/limit-up-sniper
 Environment="PATH=/root/limit-up-sniper/venv/bin"
 Environment="DEEPSEEK_API_KEY=sk-你的Deepseek密钥"
-ExecStart=/root/limit-up-sniper/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+ExecStart=/root/limit-up-sniper/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 
 # 自动重启配置
 Restart=always
@@ -218,7 +218,7 @@ export DEEPSEEK_API_KEY="your-key-here"
 
 ## 5. 后台运行 (使用 nohup)
 ```bash
-nohup uvicorn main:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
 ```
 
 ## 6. 访问

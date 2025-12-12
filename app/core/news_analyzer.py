@@ -4,9 +4,14 @@ import time
 from datetime import datetime
 import os
 import re
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from stock_utils import calculate_metrics
-from market_scanner import scan_intraday_limit_up, get_market_overview
+from app.core.stock_utils import calculate_metrics
+from app.core.market_scanner import scan_intraday_limit_up, get_market_overview, scan_limit_up_pool, scan_broken_limit_pool
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / "data"
 
 # Configuration
 CLS_API_URL = "https://www.cls.cn/nodeapi/telegraphList"
@@ -25,49 +30,26 @@ def get_market_data(logger=None):
     """
     if logger: logger("[*] 正在获取今日市场核心数据 (涨停/炸板)...")
     
-    date_str = datetime.now().strftime('%Y%m%d')
-    base_url = "https://push2ex.eastmoney.com/"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    params = {
-        "ut": "7eea3edcaed734bea9cbfc24409ed989",
-        "dpt": "wz.ztzt",
-        "Pageindex": 0,
-        "pagesize": 100, # Top 100
-        "sort": "fbt:asc",
-        "date": date_str,
-        "_": int(time.time() * 1000)
-    }
-
     market_summary = ""
     
-    # 1. 涨停池
+    # 1. 涨停池 (使用 market_scanner 的统一接口)
     try:
-        resp = requests.get(base_url + "getTopicZtpPool", params=params, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            pool = data.get('data', {}).get('pool', [])
-            if pool:
-                market_summary += f"【今日涨停池】共 {len(pool)} 家。\n"
-                # 提取连板股
-                high_board = [s for s in pool if s['lbc'] > 1]
-                market_summary += f"连板股 ({len(high_board)}家): " + ", ".join([f"{s['n']}({s['lbc']}板)" for s in high_board]) + "\n"
-                # 提取首板代表 (最早涨停)
-                first_board = pool[:5]
-                market_summary += f"最早涨停: " + ", ".join([f"{s['n']}({s['hybk']})" for s in first_board]) + "\n"
+        pool = scan_limit_up_pool(logger)
+        if pool:
+            market_summary += f"【今日涨停池】共 {len(pool)} 家。\n"
+            # 由于原生接口不返回连板数，这里只列出部分代表
+            # 简单列出前 10 个
+            top_stocks = pool[:10]
+            market_summary += f"涨停代表: " + ", ".join([f"{s['name']}" for s in top_stocks]) + "\n"
     except Exception as e:
         if logger: logger(f"[!] 获取涨停数据失败: {e}")
 
     # 2. 炸板池
     try:
-        resp = requests.get(base_url + "getTopicZbPool", params=params, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            pool = data.get('data', {}).get('pool', [])
-            if pool:
-                market_summary += f"【今日炸板池】共 {len(pool)} 家。\n"
-                market_summary += f"炸板代表: " + ", ".join([f"{s['n']}" for s in pool[:5]]) + "\n"
+        pool = scan_broken_limit_pool(logger)
+        if pool:
+            market_summary += f"【今日炸板池】共 {len(pool)} 家。\n"
+            market_summary += f"炸板代表: " + ", ".join([f"{s['name']}" for s in pool[:5]]) + "\n"
     except Exception as e:
         if logger: logger(f"[!] 获取炸板数据失败: {e}")
         
@@ -446,8 +428,8 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None):
     watchlist = {}
     
     # 1. 加载现有列表
-    output_file = "watchlist.json"
-    if os.path.exists(output_file):
+    output_file = DATA_DIR / "watchlist.json"
+    if output_file.exists():
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
@@ -508,12 +490,20 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None):
         
         for stock in analyzed_stocks:
             code = stock['code']
-            # 简单的代码格式修正 (确保是 sh/sz 开头)
-            if not (code.startswith('sh') or code.startswith('sz')):
-                # 尝试修复，比如 600xxx -> sh600xxx
+            # 简单的代码格式修正 (确保是 sh/sz/bj 开头)
+            if not (code.startswith('sh') or code.startswith('sz') or code.startswith('bj')):
+                # 尝试修复
                 if code.startswith('6'): code = 'sh' + code
                 elif code.startswith('0') or code.startswith('3'): code = 'sz' + code
+                elif code.startswith('8') or code.startswith('4') or code.startswith('9'): code = 'bj' + code
             
+            # 过滤非A股/北证 (如港股 0xxxx 5位)
+            # A股/北证代码通常是6位数字
+            raw_code = code.replace('sh', '').replace('sz', '').replace('bj', '')
+            if not raw_code.isdigit() or len(raw_code) != 6:
+                if logger: logger(f"    [!] 忽略非标准代码: {code}")
+                continue
+
             msg = f"    [+] 挖掘目标: {stock['name']} ({code}) - {stock['strategy']} - {stock['score']}"
             print(msg)
             if logger: logger(msg)
@@ -579,8 +569,26 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None):
             }
 
     # 3. 保存结果
-    output_file = "watchlist.json"
-    final_list = list(watchlist.values())
+    output_file = DATA_DIR / "watchlist.json"
+    
+    # 重新加载现有文件以避免覆盖在此期间手动添加的股票 (Race Condition Fix)
+    current_watchlist = {}
+    if output_file.exists():
+        try:
+            with open(output_file, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+                for item in existing:
+                    current_watchlist[item['code']] = item
+        except:
+            pass
+            
+    # 合并本次分析结果
+    # 如果代码在本次分析结果中，使用本次结果(包含最新分析)
+    # 如果代码不在本次结果中但在文件中(例如手动添加)，保留它
+    for code, item in watchlist.items():
+        current_watchlist[code] = item
+        
+    final_list = list(current_watchlist.values())
     final_list.sort(key=lambda x: x['initial_score'], reverse=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:

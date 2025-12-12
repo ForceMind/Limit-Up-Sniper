@@ -1,21 +1,31 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import requests
 import json
 import os
 import asyncio
 import time
+from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
-from news_analyzer import generate_watchlist, analyze_single_stock
-from market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
-from stock_utils import calculate_metrics
+from app.core.news_analyzer import generate_watchlist, analyze_single_stock
+from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
+from app.core.stock_utils import calculate_metrics
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+TEMPLATE_DIR = BASE_DIR / "app" / "templates"
+
+# Ensure data dir exists
+DATA_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 # WebSocket Manager
 class ConnectionManager:
@@ -40,9 +50,10 @@ manager = ConnectionManager()
 
 def load_watchlist():
     """加载复盘生成的关注列表"""
-    if os.path.exists("watchlist.json"):
+    file_path = DATA_DIR / "watchlist.json"
+    if file_path.exists():
         try:
-            with open("watchlist.json", "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             return []
@@ -57,9 +68,10 @@ broken_limit_pool_data = []
 
 def load_market_pools():
     global limit_up_pool_data, broken_limit_pool_data
-    if os.path.exists("market_pools.json"):
+    file_path = DATA_DIR / "market_pools.json"
+    if file_path.exists():
         try:
-            with open("market_pools.json", "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 limit_up_pool_data = data.get("limit_up", [])
                 broken_limit_pool_data = data.get("broken", [])
@@ -68,7 +80,8 @@ def load_market_pools():
 
 def save_market_pools():
     try:
-        with open("market_pools.json", "w", encoding="utf-8") as f:
+        file_path = DATA_DIR / "market_pools.json"
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump({
                 "limit_up": limit_up_pool_data,
                 "broken": broken_limit_pool_data,
@@ -180,12 +193,14 @@ async def add_stock(code: str):
             code = f"sh{code}"
         elif code.startswith('0') or code.startswith('3'):
             code = f"sz{code}"
+        elif code.startswith('8') or code.startswith('4') or code.startswith('9'):
+            code = f"bj{code}"
         else:
             # 默认为 sh (或者报错)
             pass
     
     # 简单的格式校验
-    if not (code.startswith('sh') or code.startswith('sz')):
+    if not (code.startswith('sh') or code.startswith('sz') or code.startswith('bj')):
         return {"status": "error", "message": "Invalid code format"}
         
     # 如果已存在，忽略
@@ -201,7 +216,7 @@ async def add_stock(code: str):
     
     try:
         # 构造 EastMoney secid
-        # sh -> 1.xxx, sz -> 0.xxx
+        # sh -> 1.xxx, sz -> 0.xxx, bj -> 0.xxx (通常北证也是0)
         secid = ""
         if code.startswith('sh'):
             secid = f"1.{code[2:]}"
@@ -238,7 +253,8 @@ async def add_stock(code: str):
         
     # 保存到文件
     try:
-        with open("watchlist.json", "w", encoding="utf-8") as f:
+        file_path = DATA_DIR / "watchlist.json"
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Error saving watchlist: {e}")
@@ -807,7 +823,8 @@ async def remove_from_watchlist(request: Request):
             WATCH_LIST = list(watchlist_map.keys())
             
             # Save to disk
-            with open("watchlist.json", "w", encoding="utf-8") as f:
+            file_path = DATA_DIR / "watchlist.json"
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
                 
             return {"status": "success", "message": f"Removed {code}"}

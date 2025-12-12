@@ -82,7 +82,7 @@ Group=$RUN_USER
 WorkingDirectory=$APP_DIR
 Environment="PATH=$APP_DIR/venv/bin"
 Environment="DEEPSEEK_API_KEY=$API_KEY"
-ExecStart=$APP_DIR/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+ExecStart=$APP_DIR/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 
 Restart=always
 RestartSec=5

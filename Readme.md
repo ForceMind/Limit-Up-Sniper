@@ -70,7 +70,11 @@ export DEEPSEEK_API_KEY="sk-你的Deepseek密钥"
 在同一个终端窗口中运行：
 
 ```bash
-python -m uvicorn main:app --reload --port 8000
+python run.py
+```
+或者使用 uvicorn 直接启动：
+```bash
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 5. 访问系统
@@ -96,13 +100,17 @@ python -m uvicorn main:app --reload --port 8000
 
 ```
 Limit-Up-Sniper/
-├── main.py              # FastAPI 后端主程序 (WebSocket, API)
-├── news_analyzer.py     # 新闻抓取与 AI 分析核心逻辑
-├── templates/
-│   └── index.html       # Vue.js 前端页面
-├── watchlist.json       # 存储关注股票数据的 JSON 文件
-├── requirements.txt     # Python 依赖列表
-└── Readme.md            # 项目文档
+├── app/
+│   ├── main.py              # FastAPI 后端主程序 (WebSocket, API)
+│   ├── core/                # 核心逻辑模块
+│   │   ├── news_analyzer.py # 新闻抓取与 AI 分析
+│   │   ├── market_scanner.py# 市场扫描与行情获取
+│   │   └── stock_utils.py   # 工具函数
+│   └── templates/           # 前端页面
+├── data/                    # 数据存储 (JSON)
+├── run.py                   # 启动脚本
+├── install.sh               # 一键部署脚本
+└── requirements.txt         # 依赖列表
 ```
 
 ## ⚠️ 免责声明
