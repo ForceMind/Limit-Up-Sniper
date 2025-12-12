@@ -440,7 +440,9 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
 
     # 2. 如果是盘中模式，进行行情扫描并更新/剔除
     if mode == "intraday":
-        scanner_stocks = scan_intraday_limit_up(logger=logger)
+        intraday_stocks, sealed_stocks = scan_intraday_limit_up(logger=logger)
+        # 合并两者用于判断是否仍在活跃池
+        scanner_stocks = intraday_stocks + sealed_stocks
         scanner_codes = set(s['code'] for s in scanner_stocks)
         
         # 2.1 标记不再满足条件的股票为 Discarded

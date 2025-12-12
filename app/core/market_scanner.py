@@ -19,24 +19,23 @@ def is_20cm_stock(code):
 
 def scan_intraday_limit_up(logger=None):
     """
-    扫描盘中即将涨停的股票 (基于东方财富实时行情)
+    扫描盘中即将涨停的股票 (优先使用 AKShare/EastMoney 接口，带连接修复)
     逻辑:
-    1. 涨幅 > 5% 且 < 9.8% (未封板)
-    2. 涨速 > 1% (1分钟内快速拉升)
-    3. 换手率 > 3% (有一定流动性)
+    1. 涨幅 > 5%
+    2. 区分未封板(Intraday)和已封板(LimitUp)
     """
-    if logger: logger("[*] 正在扫描盘中异动股 (数据源: 东方财富)...")
-    print("[*] 正在扫描盘中异动股 (数据源: 东方财富)...")
+    if logger: logger("[*] 正在扫描盘中异动股 (数据源: AKShare/EastMoney)...")
+    # print("[*] 正在扫描盘中异动股 (数据源: AKShare/EastMoney)...")
     
+    # 使用 AKShare 的底层接口逻辑 (EastMoney)，但增加 Headers 修复连接问题
     url = "http://push2.eastmoney.com/api/qt/clist/get"
-    # Add headers to prevent RemoteDisconnected
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": "http://quote.eastmoney.com/"
     }
     params = {
         "pn": 1,
-        "pz": 2000, # Increase to 2000
+        "pz": 3000, # 获取更多以覆盖全市场活跃股
         "po": 1,
         "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -48,13 +47,14 @@ def scan_intraday_limit_up(logger=None):
         "_": int(time.time() * 1000)
     }
     
-    found_stocks = []
+    intraday_stocks = []
+    sealed_stocks = []
     
     try:
-        resp = requests.get(url, headers=headers, params=params, timeout=10) # Increase timeout
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
         data = resp.json()
         if not data.get('data'):
-            return []
+            return [], []
             
         stock_list = data['data']['diff']
         
@@ -83,15 +83,35 @@ def scan_intraday_limit_up(logger=None):
             limit_ratio = 1.2 if is_20cm else 1.1
             limit_up_price = round(prev_close * limit_ratio, 2)
             
-            # 过滤已封板的股票 (现价 >= 涨停价)
-            if current >= limit_up_price - 0.01:
-                continue
+            # 格式化代码
+            if is_bse_stock(code):
+                full_code = f"bj{code}"
+            else:
+                full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
 
-            # 阈值设定 (用户自定义):
-            # 主板: > 5%
-            # 创业板/科创板: > 15%
+            # 检查是否已封板
+            is_sealed = current >= limit_up_price - 0.01
+            
+            if is_sealed:
+                # 已封板 -> 加入 sealed_stocks
+                sealed_stocks.append({
+                    "code": full_code,
+                    "name": name,
+                    "current": current,
+                    "change_percent": change_percent,
+                    "time": "-", # 实时扫描无法获取准确封板时间
+                    "concept": "盘中涨停",
+                    "reason": "涨停",
+                    "strategy": "LimitUp",
+                    "circulation_value": circ_mv,
+                    "turnover": turnover
+                })
+                continue # 不再加入 intraday
+
+            # 未封板 -> 检查是否符合 Intraday 标准
+            # 阈值设定:
             if is_20cm:
-                if change_percent < 15.0:
+                if change_percent < 10.0: # 创业板放宽到 10%
                     continue
             else:
                 if change_percent < 5.0:
@@ -116,7 +136,7 @@ def scan_intraday_limit_up(logger=None):
             else:
                 full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
-            found_stocks.append({
+            intraday_stocks.append({
                 "code": full_code,
                 "name": name,
                 "concept": "盘中异动",
@@ -132,15 +152,19 @@ def scan_intraday_limit_up(logger=None):
     except Exception as e:
         if logger: logger(f"[!] 扫描行情失败: {e}")
         
-    return found_stocks
+    return intraday_stocks, sealed_stocks
 
 def scan_limit_up_pool(logger=None):
     """
-    扫描已涨停的股票 (使用东方财富原生接口，替代 AKShare)
+    扫描已涨停的股票 (使用 AKShare/EastMoney 接口，带连接修复)
     """
-    if logger: logger("[*] 正在扫描已涨停股票 (EastMoney Native)...")
+    if logger: logger("[*] 正在扫描已涨停股票 (AKShare/EastMoney)...")
     
     url = "http://push2.eastmoney.com/api/qt/clist/get"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "http://quote.eastmoney.com/"
+    }
     params = {
         "pn": 1,
         "pz": 2000, # 获取前2000个涨幅最高的
@@ -158,7 +182,7 @@ def scan_limit_up_pool(logger=None):
     found_stocks = []
     
     try:
-        resp = requests.get(url, params=params, timeout=5)
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
         data = resp.json()
         if not data.get('data'):
             return []

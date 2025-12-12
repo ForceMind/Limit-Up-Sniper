@@ -117,7 +117,7 @@ async def update_market_pools_task():
 
 async def update_intraday_pool_task():
     """Fast loop for intraday scanner"""
-    global intraday_pool_data
+    global intraday_pool_data, limit_up_pool_data
     from app.core.market_scanner import scan_intraday_limit_up
     loop = asyncio.get_event_loop()
     while True:
@@ -125,9 +125,18 @@ async def update_intraday_pool_task():
             # Only run during trading hours (approx)
             now = datetime.now()
             if 9 <= now.hour < 15:
-                new_data = await loop.run_in_executor(None, scan_intraday_limit_up)
-                if new_data:
-                    intraday_pool_data = new_data
+                result = await loop.run_in_executor(None, scan_intraday_limit_up)
+                if result:
+                    intraday_stocks, sealed_stocks = result
+                    intraday_pool_data = intraday_stocks
+                    
+                    # Merge sealed stocks into limit_up_pool_data if not already present
+                    if sealed_stocks:
+                        existing_codes = {s['code'] for s in limit_up_pool_data}
+                        for s in sealed_stocks:
+                            if s['code'] not in existing_codes:
+                                limit_up_pool_data.append(s)
+                                existing_codes.add(s['code'])
         except Exception as e:
             print(f"Intraday scan error: {e}")
         await asyncio.sleep(10) # Fast update
@@ -376,6 +385,37 @@ SYSTEM_CONFIG = {
     "current_status": "Idle"
 }
 
+def load_config():
+    """Load configuration from disk"""
+    global SYSTEM_CONFIG
+    config_path = DATA_DIR / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                saved_config = json.load(f)
+                # Update only persistent fields
+                for key in ["auto_analysis_enabled", "use_smart_schedule", "fixed_interval_minutes"]:
+                    if key in saved_config:
+                        SYSTEM_CONFIG[key] = saved_config[key]
+        except Exception as e:
+            print(f"Failed to load config: {e}")
+
+def save_config():
+    """Save configuration to disk"""
+    config_path = DATA_DIR / "config.json"
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "auto_analysis_enabled": SYSTEM_CONFIG["auto_analysis_enabled"],
+                "use_smart_schedule": SYSTEM_CONFIG["use_smart_schedule"],
+                "fixed_interval_minutes": SYSTEM_CONFIG["fixed_interval_minutes"]
+            }, f, indent=2)
+    except Exception as e:
+        print(f"Failed to save config: {e}")
+
+# Load config on startup
+load_config()
+
 @app.get("/api/config")
 async def get_config():
     return SYSTEM_CONFIG
@@ -391,6 +431,7 @@ async def update_config(config: ConfigUpdate):
     SYSTEM_CONFIG["auto_analysis_enabled"] = config.auto_analysis_enabled
     SYSTEM_CONFIG["use_smart_schedule"] = config.use_smart_schedule
     SYSTEM_CONFIG["fixed_interval_minutes"] = config.fixed_interval_minutes
+    save_config() # Persist changes
     return {"status": "success", "config": SYSTEM_CONFIG}
 
 async def scheduler_loop():
@@ -645,6 +686,10 @@ def get_eastmoney_data(codes):
     for i in range(0, len(secids), batch_size):
         batch = secids[i:i+batch_size]
         url = "http://push2.eastmoney.com/api/qt/ulist/get"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "http://quote.eastmoney.com/"
+        }
         params = {
             "secids": ",".join(batch),
             "fields": "f12,f14,f2,f3,f4,f18,f15,f16,f17,f139", # 代码,名称,现价,涨幅,涨跌,昨收,最高,最低,开盘,市场
@@ -655,7 +700,7 @@ def get_eastmoney_data(codes):
         }
         
         try:
-            resp = requests.get(url, params=params, timeout=5)
+            resp = requests.get(url, headers=headers, params=params, timeout=5)
             data = resp.json()
             if not data.get('data') or not data['data'].get('diff'):
                 continue
