@@ -420,6 +420,19 @@ async def scheduler_loop():
     print("Starting background scheduler...")
     last_pool_update_time = 0
     
+    # Startup Check: If watchlist was updated recently (< 1 hour), skip immediate analysis
+    # Check file modification time of watchlist.json
+    try:
+        watchlist_path = DATA_DIR / "watchlist.json"
+        if watchlist_path.exists():
+            mtime = watchlist_path.stat().st_mtime
+            if time.time() - mtime < 3600:
+                print("Watchlist updated recently (<1h), skipping immediate analysis on startup.")
+                # Set last_run_time to mtime so scheduler thinks it just ran
+                SYSTEM_CONFIG["last_run_time"] = mtime
+    except Exception as e:
+        print(f"Startup check failed: {e}")
+
     while True:
         current_timestamp = time.time()
         now = datetime.now()

@@ -1440,18 +1440,46 @@
                 this.fetchLimitUpPool();
                 this.fetchMarketSentiment();
                 this.connectWebSocket();
-                setInterval(this.fetchData, 3000);
-                setInterval(this.fetchLimitUpPool, 10000);
-                setInterval(this.fetchMarketSentiment, 5000); // Update sentiment every 5 seconds
+                
+                // Intelligent Polling
+                setInterval(() => {
+                    const now = new Date();
+                    const h = now.getHours();
+                    const m = now.getMinutes();
+                    const timeVal = h * 100 + m;
+                    const isTrading = (timeVal >= 915 && timeVal <= 1130) || (timeVal >= 1300 && timeVal <= 1500);
+                    
+                    // 1. Stocks Data: 3s during trading, else pause (or very slow)
+                    if (isTrading) {
+                        this.fetchData();
+                    } else {
+                        // Optional: fetch once every minute just in case
+                        if (now.getSeconds() < 5) this.fetchData();
+                    }
+                }, 3000);
+
+                setInterval(() => {
+                    const now = new Date();
+                    const h = now.getHours();
+                    const m = now.getMinutes();
+                    const timeVal = h * 100 + m;
+                    const isTrading = (timeVal >= 915 && timeVal <= 1130) || (timeVal >= 1300 && timeVal <= 1500);
+
+                    // 2. Limit Up Pool: 10s during trading
+                    if (isTrading) {
+                        this.fetchLimitUpPool();
+                    } else {
+                        if (now.getSeconds() < 10) this.fetchLimitUpPool();
+                    }
+                }, 10000);
+
+                // 3. Market Sentiment: 60s always (or just trading?)
+                // User said "1 minute refresh is fine"
+                setInterval(this.fetchMarketSentiment, 60000); 
+
                 // Update time every minute for visibility logic
                 setInterval(() => {
                     this.currentTime = new Date();
-                    // Auto-hide aggressive panel after 9:30 if it was open
-                    if (!this.isPreMarketTime && this.showAggressivePanel) {
-                        // Only auto-hide once per session or if user hasn't manually opened it?
-                        // For now, just sync with time, but allow manual override
-                        // Actually, let's just set initial state based on time, and then let user control
-                    }
                 }, 60000);
                 
                 // Initialize visibility based on time
