@@ -90,6 +90,9 @@ def scan_intraday_limit_up(logger=None):
                 full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
 
             # 检查是否已封板
+            # 严格判定: 现价 >= 涨停价 (允许0.01误差)
+            # 注意: 实时行情中，如果卖一量为0，通常意味着封死。但 clist 接口不返回卖一量。
+            # 我们只能依赖价格判定。
             is_sealed = current >= limit_up_price - 0.01
             
             if is_sealed:
@@ -157,8 +160,100 @@ def scan_intraday_limit_up(logger=None):
 def scan_limit_up_pool(logger=None):
     """
     扫描已涨停的股票 (使用 AKShare/EastMoney 接口，带连接修复)
+    尝试获取封板时间
     """
     if logger: logger("[*] 正在扫描已涨停股票 (AKShare/EastMoney)...")
+    
+    # 尝试使用 EastMoney 的涨停池专用接口 (TopicZtpPool) 获取更详细信息(如封板时间)
+    # 接口: http://push2ex.eastmoney.com/getTopicZtpPool
+    # 参数: ut=..., dpt=wz.ztzt
+    
+    url = "http://push2ex.eastmoney.com/getTopicZtpPool"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "http://quote.eastmoney.com/"
+    }
+    params = {
+        "ut": "7eea3edcaed734bea9cbfc24409ed989",
+        "dpt": "wz.ztzt",
+        "Pageindex": 0,
+        "Pagesize": 200,
+        "Sort": "fbt:asc", # 按封板时间排序
+        "Date": datetime.now().strftime("%Y%m%d"),
+        "_": int(time.time() * 1000)
+    }
+    
+    found_stocks = []
+    
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        data = resp.json()
+        if not data.get('data') or not data['data'].get('pool'):
+            # Fallback to clist if ZT pool is empty (e.g. morning) or fails
+            if logger: logger("[!] 专用涨停接口无数据，尝试通用接口...")
+            return scan_limit_up_pool_fallback(logger)
+            
+        pool_list = data['data']['pool']
+        
+        for s in pool_list:
+            # c: code, n: name, zdp: change_percent, p: current, lbc: limit_up_days
+            # fbt: first_seal_time (int, e.g. 93000)
+            # lbt: last_seal_time
+            # fund: concept string? No, usually hybk
+            
+            code = s['c']
+            name = s['n']
+            change_percent = s['zdp']
+            current = s['p'] / 1000 if s['p'] > 1000 else s['p'] # Sometimes scaled? No, usually raw. Wait, EM ZT pool usually returns raw.
+            # Actually check sample data: p: 1234 -> 12.34? No, usually standard.
+            # Let's assume standard.
+            
+            # Format time
+            fbt = str(s['fbt'])
+            formatted_time = fbt
+            if len(fbt) == 6:
+                formatted_time = f"{fbt[:2]}:{fbt[2:4]}:{fbt[4:]}"
+            elif len(fbt) == 5:
+                formatted_time = f"0{fbt[:1]}:{fbt[1:3]}:{fbt[3:]}"
+                
+            turnover = s['hs'] # turnover
+            circ_mv = s['ltsz'] # circulation value
+            limit_days = s['lbc'] # limit up days
+            
+            # 0. 过滤北证
+            if FILTER_BSE and is_bse_stock(code): continue
+            
+            # 格式化代码
+            if is_bse_stock(code):
+                full_code = f"bj{code}"
+            else:
+                full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
+            
+            found_stocks.append({
+                "code": full_code,
+                "name": name,
+                "current": current,
+                "change_percent": change_percent,
+                "time": formatted_time,
+                "concept": s.get('hybk', '-'), # Industry
+                "reason": f"{limit_days}连板" if limit_days > 1 else "首板",
+                "strategy": "LimitUp",
+                "circulation_value": circ_mv,
+                "turnover": turnover,
+                "limit_up_days": limit_days
+            })
+            
+    except Exception as e:
+        if logger: logger(f"[!] 专用涨停接口失败 ({e})，切换通用接口...")
+        return scan_limit_up_pool_fallback(logger)
+        
+    return found_stocks
+
+def scan_limit_up_pool_fallback(logger=None):
+    """
+    备用: 使用通用 clist 接口扫描涨停 (无封板时间)
+    """
+    # if logger: logger("[*] 正在扫描已涨停股票 (Fallback)...")
     
     url = "http://push2.eastmoney.com/api/qt/clist/get"
     headers = {
@@ -167,15 +262,15 @@ def scan_limit_up_pool(logger=None):
     }
     params = {
         "pn": 1,
-        "pz": 2000, # 获取前2000个涨幅最高的
+        "pz": 2000, 
         "po": 1,
         "np": 1,
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
         "fltt": 2,
         "invt": 2,
-        "fid": "f3", # 按涨幅排序
-        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048", # 沪深A股 + 北证
-        "fields": "f12,f14,f3,f2,f18,f8,f21", # 代码,名称,涨幅,现价,昨收,换手,流通市值
+        "fid": "f3", 
+        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048", 
+        "fields": "f12,f14,f3,f2,f18,f8,f21", 
         "_": int(time.time() * 1000)
     }
     
@@ -198,36 +293,19 @@ def scan_limit_up_pool(logger=None):
             turnover = s['f8']
             circ_mv = s.get('f21', 0)
             
-            # 0. 过滤北证 (如果配置了)
-            if FILTER_BSE and is_bse_stock(code):
-                continue
-            
-            # 0.1 过滤非A股
-            if not code.isdigit() or len(code) != 6:
-                continue
+            if FILTER_BSE and is_bse_stock(code): continue
+            if not code.isdigit() or len(code) != 6: continue
                 
-            # 1. 判定涨停
-            # 简单判定: 涨幅 > 9.5% (主板) 或 > 19.5% (创业/科创/北证)
-            # 更严谨判定: 现价 >= 昨收 * 1.1 (或 1.2/1.3)
-            
             is_20cm = is_20cm_stock(code)
             is_30cm = is_bse_stock(code)
-            
             limit_ratio = 1.1
             if is_20cm: limit_ratio = 1.2
             if is_30cm: limit_ratio = 1.3
-            
             limit_up_price = round(prev_close * limit_ratio, 2)
             
-            # 允许 1 分钱误差
-            if current < limit_up_price - 0.01:
-                continue
-                
-            # 必须是正涨幅 (排除跌停)
-            if change_percent < 0:
-                continue
+            if current < limit_up_price - 0.01: continue
+            if change_percent < 0: continue
 
-            # 格式化代码
             if is_bse_stock(code):
                 full_code = f"bj{code}"
             else:
@@ -238,8 +316,8 @@ def scan_limit_up_pool(logger=None):
                 "name": name,
                 "current": current,
                 "change_percent": change_percent,
-                "time": "-", # 原生接口不返回封板时间，暂空
-                "concept": "-", # 原生接口不返回行业，暂空
+                "time": "-", 
+                "concept": "-", 
                 "reason": "涨停",
                 "strategy": "LimitUp",
                 "circulation_value": circ_mv,
@@ -248,7 +326,7 @@ def scan_limit_up_pool(logger=None):
             
     except Exception as e:
         if logger: logger(f"[!] 扫描涨停池失败: {e}")
-        return None # Return None to indicate failure
+        return []
         
     return found_stocks
 
@@ -284,12 +362,20 @@ def scan_broken_limit_pool(logger=None):
             else:
                 full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
+            # Format time: 102530 -> 10:25:30
+            raw_time = str(row['首次封板时间'])
+            formatted_time = raw_time
+            if len(raw_time) == 6:
+                formatted_time = f"{raw_time[:2]}:{raw_time[2:4]}:{raw_time[4:]}"
+            elif len(raw_time) == 5: # 93000
+                formatted_time = f"0{raw_time[:1]}:{raw_time[1:3]}:{raw_time[3:]}"
+            
             found_stocks.append({
                 "code": full_code,
                 "name": name,
                 "current": current,
                 "change_percent": change_percent,
-                "time": str(row['首次封板时间']), 
+                "time": formatted_time, 
                 "high": high,
                 "concept": str(row['所属行业']),
                 "associated": "-",

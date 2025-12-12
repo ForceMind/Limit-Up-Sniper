@@ -1228,9 +1228,11 @@
                         } else {
                             this.analysisResult = '分析失败: ' + result.message;
                         }
+                        this.isAnalyzingStock = false; // Stop loading spinner
                     } catch (error) {
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisResult = '请求错误: ' + error.message;
+                            this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } finally {
                         if (this.currentAnalysisStock.code === stock.code) {
@@ -1278,10 +1280,12 @@
                             } else {
                                 this.analysisResult = '分析失败: ' + result.message;
                             }
+                            this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } catch (error) {
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisResult = '请求错误: ' + error.message;
+                            this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } finally {
                         if (this.currentAnalysisStock.code === stock.code) {

@@ -451,7 +451,7 @@ async def scheduler_loop():
         mode = "after_hours"
         
         if SYSTEM_CONFIG["use_smart_schedule"]:
-            # 09:30 - 15:00 (Trading)
+            # 09:30 - 15:00 (Trading) - Intraday Surprise
             if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
                 interval_seconds = 15 * 60 # 15 mins
                 lookback_hours = 0.25
@@ -520,10 +520,18 @@ async def scheduler_loop():
                 mode = "after_hours"
 
         # Update Next Run Time for UI
+        # If we just ran (last_run_time is very close to now), next run is now + interval
+        # If we haven't run in a while, next run is effectively "now" (pending execution)
         if SYSTEM_CONFIG["last_run_time"] == 0:
              SYSTEM_CONFIG["next_run_time"] = current_timestamp
         else:
-             SYSTEM_CONFIG["next_run_time"] = SYSTEM_CONFIG["last_run_time"] + interval_seconds
+             # Calculate next run based on last run
+             next_run = SYSTEM_CONFIG["last_run_time"] + interval_seconds
+             # If next run is in the past (overdue), show it as now
+             if next_run < current_timestamp:
+                 SYSTEM_CONFIG["next_run_time"] = current_timestamp
+             else:
+                 SYSTEM_CONFIG["next_run_time"] = next_run
 
         # Task 1: Analysis
         if SYSTEM_CONFIG["auto_analysis_enabled"]:
@@ -538,6 +546,9 @@ async def scheduler_loop():
                         SYSTEM_CONFIG["current_status"] = f"Running {mode}..."
                         # Update last_run_time BEFORE execution to prevent loop on error
                         SYSTEM_CONFIG["last_run_time"] = current_timestamp
+                        
+                        # Recalculate next run time immediately after update
+                        SYSTEM_CONFIG["next_run_time"] = current_timestamp + interval_seconds
                         
                         thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
                         await asyncio.to_thread(execute_analysis, mode, lookback_hours)
