@@ -330,6 +330,9 @@ def get_market_overview(logger=None):
                     
                     if current == 0 or prev_close == 0: continue
 
+                    # 过滤北证 (8/4/92开头 或 bj开头)
+                    if is_bse_stock(code): continue
+
                     # 判断涨跌停价格
                     is_20cm = code.startswith('30') or code.startswith('68')
                     limit_ratio = 1.2 if is_20cm else 1.1

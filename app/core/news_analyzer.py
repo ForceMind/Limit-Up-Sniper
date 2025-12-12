@@ -433,14 +433,16 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
     
     watchlist = {}
     
-    # 1. 加载现有列表
+    # 1. 加载现有列表 (用于对比变化)
     output_file = DATA_DIR / "watchlist.json"
+    initial_codes = set()
     if output_file.exists():
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
                 for item in existing_data:
                     watchlist[item['code']] = item
+                    initial_codes.add(item['code'])
         except:
             pass
 
@@ -629,7 +631,28 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, ensure_ascii=False, indent=2)
         
-    msg = f"[+] 复盘完成。生成 {len(final_list)} 个关注标的 -> {output_file}"
+    # 计算变化
+    final_codes = set(item['code'] for item in final_list)
+    added_codes = final_codes - initial_codes
+    removed_codes = initial_codes - final_codes
+    
+    # 获取新增股票名称
+    added_names = []
+    for code in added_codes:
+        item = current_watchlist.get(code)
+        if item:
+            added_names.append(f"{item['name']}({code})")
+            
+    # 获取移除股票名称 (需要从 initial_codes 对应的原始数据中找，但这里简化处理，只显示代码)
+    # 为了更好的体验，我们尝试从 watchlist (如果还在) 或 current_watchlist 中找，但移除的肯定不在 current_watchlist
+    # 所以这里只显示代码，或者如果之前加载了 existing_data 可以查字典。
+    # 简单起见，只显示数量和新增详情。
+    
+    msg = f"[+] 复盘完成。共 {len(final_list)} 个标的。\n"
+    msg += f"    - 新增 {len(added_codes)} 只: {', '.join(added_names) if added_names else '无'}\n"
+    msg += f"    - 移除 {len(removed_codes)} 只\n"
+    msg += f"    - 列表已保存至 {output_file}"
+    
     print(msg)
     if logger: logger(msg)
 
