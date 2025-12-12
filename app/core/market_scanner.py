@@ -295,7 +295,13 @@ def get_market_overview(logger=None):
         indices = data_provider.fetch_indices()
         overview["indices"] = indices
         
-        overview["stats"]["total_volume"] = round(sum([idx['amount'] for idx in indices]), 2)
+        # Calculate total volume (Shanghai + Shenzhen only, exclude ChiNext as it's in Shenzhen)
+        total_vol = 0
+        for idx in indices:
+            if idx['name'] in ["上证指数", "深证成指"]:
+                total_vol += idx['amount']
+        
+        overview["stats"]["total_volume"] = round(total_vol, 2)
         
     except Exception as e:
         if logger: logger(f"[!] 获取指数失败: {e}")

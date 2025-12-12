@@ -751,20 +751,34 @@
                         </svg>
                     </button>
                 </div>
-                <div class="p-6 overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                    <div v-if="isAnalyzingStock" class="flex flex-col items-center justify-center py-8">
+                <div class="p-6 overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-300 relative min-h-[200px]">
+                    <!-- Initial Loading State -->
+                    <div v-if="isAnalyzingStock && !isReanalyzing" class="flex flex-col items-center justify-center py-8 absolute inset-0">
                         <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
                         <p class="text-gray-500 animate-pulse">正在分析盘面数据...</p>
                     </div>
-                    <div v-else v-html="renderMarkdown(analysisResult)" class="markdown-content"></div>
+                    
+                    <!-- Content Area -->
+                    <div v-else class="relative">
+                        <!-- Re-analyzing Overlay -->
+                        <div v-if="isReanalyzing" class="absolute inset-0 bg-white/50 dark:bg-gray-800/50 z-10 flex items-center justify-center backdrop-blur-sm">
+                            <div class="flex flex-col items-center">
+                                <div class="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                                <span class="text-xs font-bold text-blue-600 dark:text-blue-400">重新分析中...</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Markdown Content -->
+                        <div v-html="renderMarkdown(displayedAnalysisResult)" class="markdown-content"></div>
+                    </div>
                 </div>
                 <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-b-lg flex flex-col gap-3">
                     <div class="flex justify-end gap-2">
                         <button @click="reAnalyzeStock" 
                                 class="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-sm flex items-center gap-1"
-                                :disabled="isAnalyzingStock">
-                            <span>↻</span>
-                            重新分析
+                                :disabled="analysisLoading">
+                            <span :class="{'animate-spin': analysisLoading}">↻</span>
+                            {{ analysisLoading ? '分析中...' : '重新分析' }}
                         </button>
                     </div>
                     <div class="text-xs text-gray-500 text-center">
@@ -888,9 +902,12 @@
                     // AI Analysis Modal
                     showAnalysisModal: false,
                     analysisResult: '',
+                    displayedAnalysisResult: '', // For typewriter effect
+                    typewriterInterval: null,
                     analyzingStockName: '',
                     isAnalyzingStock: false,
                     analysisLoading: false,
+                    isReanalyzing: false, // New flag for re-analysis
                     currentAnalysisStock: null,
                     isEditMode: false,
                     activePoolTab: 'limit_up', // 'limit_up' or 'broken'
@@ -1233,6 +1250,23 @@
                         alert('删除请求错误');
                     }
                 },
+                startTypewriter(text) {
+                    if (this.typewriterInterval) clearInterval(this.typewriterInterval);
+                    this.displayedAnalysisResult = '';
+                    let i = 0;
+                    // Faster speed: 5ms
+                    this.typewriterInterval = setInterval(() => {
+                        if (i < text.length) {
+                            // Append a chunk of characters to make it faster and smoother
+                            const chunk = text.slice(i, i + 5);
+                            this.displayedAnalysisResult += chunk;
+                            i += 5;
+                        } else {
+                            clearInterval(this.typewriterInterval);
+                            this.displayedAnalysisResult = text; // Ensure full text
+                        }
+                    }, 10);
+                },
                 async analyzeStock(stock, promptType = 'default') {
                     this.analyzingStockName = stock.name;
                     this.currentAnalysisStock = stock;
@@ -1240,6 +1274,8 @@
                     this.isAnalyzingStock = true;
                     this.analysisLoading = true;
                     this.analysisResult = '';
+                    this.displayedAnalysisResult = '';
+                    this.isReanalyzing = false;
                     
                     try {
                         const payload = {
@@ -1273,13 +1309,16 @@
                         
                         if (result.status === 'success') {
                             this.analysisResult = result.analysis;
+                            this.startTypewriter(result.analysis);
                         } else {
                             this.analysisResult = '分析失败: ' + result.message;
+                            this.displayedAnalysisResult = this.analysisResult;
                         }
                         this.isAnalyzingStock = false; // Stop loading spinner
                     } catch (error) {
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisResult = '请求错误: ' + error.message;
+                            this.displayedAnalysisResult = this.analysisResult;
                             this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } finally {
@@ -1294,7 +1333,8 @@
                     const promptType = stock.strategy === 'Aggressive' ? 'aggressive' : 'default';
                     
                     this.analysisLoading = true;
-                    this.analysisResult = ''; // Clear previous result
+                    this.isReanalyzing = true;
+                    // Do NOT clear analysisResult here to keep text visible
                     
                     try {
                         const payload = {
@@ -1326,25 +1366,30 @@
                         if (this.currentAnalysisStock.code === stock.code) {
                             if (result.status === 'success') {
                                 this.analysisResult = result.analysis;
+                                this.startTypewriter(result.analysis);
                             } else {
                                 this.analysisResult = '分析失败: ' + result.message;
+                                this.displayedAnalysisResult = this.analysisResult;
                             }
                             this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } catch (error) {
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisResult = '请求错误: ' + error.message;
+                            this.displayedAnalysisResult = this.analysisResult;
                             this.isAnalyzingStock = false; // Stop loading spinner
                         }
                     } finally {
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisLoading = false;
+                            this.isReanalyzing = false;
                         }
                     }
                 },
                 closeAnalysisModal() {
                     this.showAnalysisModal = false;
                     this.currentAnalysisStock = null;
+                    if (this.typewriterInterval) clearInterval(this.typewriterInterval);
                 },
                 },
             mounted() {

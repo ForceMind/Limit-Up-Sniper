@@ -99,6 +99,31 @@ def save_analysis_cache():
     except:
         pass
 
+def load_market_pools():
+    """Load market pools from disk"""
+    global limit_up_pool_data, broken_limit_pool_data
+    file_path = DATA_DIR / "market_pools.json"
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                limit_up_pool_data = data.get("limit_up", [])
+                broken_limit_pool_data = data.get("broken", [])
+        except:
+            pass
+
+def save_market_pools():
+    """Save market pools to disk"""
+    try:
+        file_path = DATA_DIR / "market_pools.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "limit_up": limit_up_pool_data,
+                "broken": broken_limit_pool_data
+            }, f, ensure_ascii=False)
+    except:
+        pass
+
 # Load caches on startup
 load_market_pools()
 load_analysis_cache()
