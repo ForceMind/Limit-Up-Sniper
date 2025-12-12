@@ -2,6 +2,7 @@ import akshare as ak
 import requests
 import pandas as pd
 import time
+import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -163,7 +164,7 @@ class DataProvider:
             except Exception as e:
                 self.log(f"[!] AKShare/EM failed: {e}")
                 
-            # 2. Try Sina
+            # 2. Try Sina (AKShare)
             try:
                 self.log("[*] Fetching all market data (Sina)...")
                 df = ak.stock_zh_a_spot()
@@ -183,7 +184,16 @@ class DataProvider:
             except Exception as e:
                 self.log(f"[!] Sina failed: {e}")
             
-            # 3. Try Manual EM (Fallback for Proxy Issues)
+            # 3. Try Sina JSON API (direct, no akshare)
+            try:
+                self.log("[*] Fetching all market data (Sina JSON API)...")
+                df = self._fetch_sina_market_json()
+                if df is not None and not df.empty:
+                    return df
+            except Exception as e:
+                self.log(f"[!] Sina JSON failed: {e}")
+            
+            # 4. Try Manual EM (Fallback for Proxy Issues)
             try:
                 self.log("[*] Fetching all market data (Manual EM)...")
                 df = self._fetch_em_spot_manual()
@@ -191,6 +201,15 @@ class DataProvider:
                     return df
             except Exception as e:
                 self.log(f"[!] Manual EM failed: {e}")
+
+            # 5. Try Tushare (Requires TUSHARE_TOKEN and package installed)
+            try:
+                self.log("[*] Fetching all market data (Tushare)...")
+                df = self._fetch_tushare_spot()
+                if df is not None and not df.empty:
+                    return df
+            except Exception as e:
+                self.log(f"[!] Tushare failed: {e}")
                 
             return None
         finally:
@@ -349,22 +368,26 @@ class DataProvider:
     def _fetch_em_spot_manual(self):
         """
         Manual implementation of EastMoney Spot Data to bypass proxy issues.
+        Uses HTTP and disables proxies; smaller page size to reduce load.
         """
         try:
             url = "http://82.push2.eastmoney.com/api/qt/clist/get"
             params = {
-                "pn": "1", "pz": "5000", "po": "1", "np": "1", 
+                "pn": "1", "pz": "2000", "po": "1", "np": "1", 
                 "ut": "bd1d9ddb04089700cf9c27f6f7426281",
                 "fltt": "2", "invt": "2", "fid": "f3",
                 "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
                 "fields": "f12,f14,f2,f3,f4,f5,f6,f7,f8,f9,f10,f15,f16,f17,f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
             }
-            # f12:code, f14:name, f2:current, f3:change_percent, f4:change_amount, f5:volume, f6:amount, f7:amplitude, f8:turnover, f9:pe, f10:vol_ratio, f15:high, f16:low, f17:open, f18:prev_close
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "http://quote.eastmoney.com/",
+            }
             
             session = requests.Session()
             session.trust_env = False # Ignore system proxy
             
-            resp = session.get(url, params=params, timeout=10)
+            resp = session.get(url, params=params, headers=headers, timeout=10)
             data = resp.json()
             
             if data and data.get('data') and data['data'].get('diff'):
@@ -378,16 +401,107 @@ class DataProvider:
                 }
                 df = df.rename(columns=rename_map)
                 
-                # Handle special values
                 for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-                        
-                # Handle "-" in data
+                
                 return df
         except Exception as e:
             self.log(f"[!] Manual EM fetch failed: {e}")
         return None
+
+    def _fetch_sina_market_json(self):
+        """Fallback: use Sina Market_Center JSON API for full market data."""
+        url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getNameList"
+        params = {
+            "page": 1,
+            "num": 5000,
+            "sort": "symbol",
+            "asc": 1,
+            "node": "hs_a",
+        }
+        headers = {
+            "Referer": "https://finance.sina.com.cn",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+
+        with requests.Session() as session:
+            session.trust_env = False
+            resp = session.get(url, params=params, headers=headers, timeout=10)
+        resp.encoding = 'utf-8'
+
+        # The API returns JSON text; if blocked, text may start with '<'
+        text = resp.text.strip()
+        if not text or text.startswith('<'):
+            raise ValueError("Sina JSON blocked or empty")
+        data = json.loads(text)
+        if not data:
+            return None
+
+        df = pd.DataFrame(data)
+        rename_map = {
+            'symbol': 'code',
+            'name': 'name',
+            'trade': 'current',
+            'changepercent': 'change_percent',
+            'settlement': 'prev_close',
+            'high': 'high',
+            'amount': 'amount'
+        }
+        df = df.rename(columns=rename_map)
+
+        # Normalize fields
+        for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        # Add placeholders to align schema
+        for col in ['speed', 'turnover', 'circ_mv']:
+            df[col] = 0.0
+
+        return df
+
+    def _fetch_tushare_spot(self):
+        """Fallback using Tushare daily data. Requires env TUSHARE_TOKEN and tushare installed."""
+        try:
+            import tushare as ts
+        except Exception:
+            return None
+        token = os.environ.get("TUSHARE_TOKEN", "")
+        if not token:
+            return None
+        ts.set_token(token)
+        pro = ts.pro_api(token)
+        today = datetime.now().strftime("%Y%m%d")
+        try:
+            df = pro.daily(trade_date=today)
+            if df is None or df.empty:
+                return None
+            df = df.rename(columns={
+                'ts_code': 'code',
+                'close': 'current',
+                'pct_chg': 'change_percent',
+                'pre_close': 'prev_close',
+                'high': 'high',
+                'amount': 'amount'
+            })
+            for col in ['current', 'change_percent', 'prev_close', 'high', 'amount']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            # Normalize code to sh/sz
+            def _fmt(code):
+                if code.endswith('.SH'):
+                    return 'sh' + code.split('.')[0]
+                if code.endswith('.SZ'):
+                    return 'sz' + code.split('.')[0]
+                return code
+            df['code'] = df['code'].apply(_fmt)
+            for col in ['speed', 'turnover', 'circ_mv']:
+                df[col] = 0.0
+            return df
+        except Exception as e:
+            self.log(f"[!] Tushare error: {e}")
+            return None
 
 # Global instance
 data_provider = DataProvider()
