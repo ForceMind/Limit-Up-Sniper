@@ -733,8 +733,23 @@
                     </div>
                     <div v-else v-html="renderMarkdown(analysisResult)" class="markdown-content"></div>
                 </div>
-                <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-b-lg text-xs text-gray-500 text-center">
-                    AI分析仅供参考，不构成投资建议
+                <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-b-lg flex flex-col gap-3">
+                    <div class="flex justify-end gap-2">
+                        <button @click="reAnalyzeStock" 
+                                class="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-sm flex items-center gap-1"
+                                :disabled="isAnalyzingStock">
+                            <span v-if="isAnalyzingStock" class="animate-spin">↻</span>
+                            <span v-else>↻</span>
+                            重新分析
+                        </button>
+                        <button @click="showAnalysisModal = false" 
+                                class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm">
+                            关闭
+                        </button>
+                    </div>
+                    <div class="text-xs text-gray-500 text-center">
+                        AI分析仅供参考，不构成投资建议
+                    </div>
                 </div>
             </div>
         </div>
@@ -1193,7 +1208,8 @@
                                 limit_up_days: stock.limit_up_days,
                                 speed: stock.speed
                             },
-                            promptType: promptType
+                            promptType: promptType,
+                            force: false // Default use cache
                         };
                         
                         const response = await fetch('/api/analyze_stock', {
@@ -1202,20 +1218,82 @@
                             body: JSON.stringify(payload)
                         });
                         
-                        const data = await response.json();
-                        if (data.status === 'success') {
-                            this.analysisResult = data.analysis;
+                        const result = await response.json();
+                        
+                        // Race condition check
+                        if (this.currentAnalysisStock.code !== stock.code) return;
+                        
+                        if (result.status === 'success') {
+                            this.analysisResult = result.analysis;
                         } else {
-                            this.analysisResult = '分析失败: ' + (data.message || '未知错误');
+                            this.analysisResult = '分析失败: ' + result.message;
                         }
-                    } catch (e) {
-                        this.analysisResult = '请求错误: ' + e.message;
+                    } catch (error) {
+                        if (this.currentAnalysisStock.code === stock.code) {
+                            this.analysisResult = '请求错误: ' + error.message;
+                        }
                     } finally {
-                        this.isAnalyzingStock = false;
-                        this.analysisLoading = false;
+                        if (this.currentAnalysisStock.code === stock.code) {
+                            this.analysisLoading = false;
+                        }
                     }
-                }
-            },
+                },
+                async reAnalyzeStock() {
+                    if (!this.currentAnalysisStock) return;
+                    const stock = this.currentAnalysisStock;
+                    const promptType = stock.strategy === 'Aggressive' ? 'aggressive' : 'default';
+                    
+                    this.analysisLoading = true;
+                    this.analysisResult = ''; // Clear previous result
+                    
+                    try {
+                        const payload = {
+                            code: stock.code,
+                            name: stock.name,
+                            current: stock.current,
+                            change_percent: stock.change_percent,
+                            concept: stock.concept,
+                            metrics: {
+                                seal_rate: stock.seal_rate,
+                                broken_rate: stock.broken_rate,
+                                next_day_premium: stock.next_day_premium,
+                                limit_up_days: stock.limit_up_days,
+                                speed: stock.speed
+                            },
+                            promptType: promptType,
+                            force: true // Force re-analysis
+                        };
+                        
+                        const response = await fetch('/api/analyze_stock', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (this.currentAnalysisStock.code === stock.code) {
+                            if (result.status === 'success') {
+                                this.analysisResult = result.analysis;
+                            } else {
+                                this.analysisResult = '分析失败: ' + result.message;
+                            }
+                        }
+                    } catch (error) {
+                        if (this.currentAnalysisStock.code === stock.code) {
+                            this.analysisResult = '请求错误: ' + error.message;
+                        }
+                    } finally {
+                        if (this.currentAnalysisStock.code === stock.code) {
+                            this.analysisLoading = false;
+                        }
+                    }
+                },
+                closeAnalysisModal() {
+                    this.showAnalysisModal = false;
+                    this.currentAnalysisStock = null;
+                },
+                },
             mounted() {
                 this.fetchConfig();
                 // Initialize Theme

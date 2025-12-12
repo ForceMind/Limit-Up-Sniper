@@ -29,6 +29,11 @@ def scan_intraday_limit_up(logger=None):
     print("[*] 正在扫描盘中异动股 (数据源: 东方财富)...")
     
     url = "http://push2.eastmoney.com/api/qt/clist/get"
+    # Add headers to prevent RemoteDisconnected
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "http://quote.eastmoney.com/"
+    }
     params = {
         "pn": 1,
         "pz": 2000, # Increase to 2000
@@ -46,7 +51,7 @@ def scan_intraday_limit_up(logger=None):
     found_stocks = []
     
     try:
-        resp = requests.get(url, params=params, timeout=5)
+        resp = requests.get(url, headers=headers, params=params, timeout=10) # Increase timeout
         data = resp.json()
         if not data.get('data'):
             return []

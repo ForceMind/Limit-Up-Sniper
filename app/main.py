@@ -66,6 +66,7 @@ WATCH_LIST = list(watchlist_map.keys())
 limit_up_pool_data = []
 broken_limit_pool_data = []
 intraday_pool_data = [] # New global for fast intraday pool
+ANALYSIS_CACHE = {} # Cache for AI analysis results: {code: {content: str, timestamp: float}}
 
 def load_market_pools():
     global limit_up_pool_data, broken_limit_pool_data
@@ -903,17 +904,47 @@ class StockAnalysisRequest(BaseModel):
     concept: str = ""
     metrics: dict = {}
     promptType: str = "default"
+    force: bool = False # Force re-analysis
 
 @app.post("/api/analyze_stock")
 async def api_analyze_stock(request: StockAnalysisRequest):
     """
-    调用AI分析单个股票
+    调用AI分析单个股票 (支持缓存)
     """
     stock_data = request.dict()
+    code = stock_data.get('code')
+    force = stock_data.get('force', False)
+    
+    # Check Cache
+    if not force and code in ANALYSIS_CACHE:
+        cache_entry = ANALYSIS_CACHE[code]
+        cache_time = datetime.fromtimestamp(cache_entry['timestamp'])
+        now = datetime.now()
+        
+        # Expiry Logic: Expire at 15:00 daily
+        # If cache is from today before 15:00, and now is after 15:00 -> Expired
+        # If cache is from yesterday -> Expired
+        is_expired = False
+        if cache_time.date() < now.date():
+            is_expired = True
+        elif cache_time.hour < 15 and now.hour >= 15:
+            is_expired = True
+            
+        if not is_expired:
+            return {"status": "success", "analysis": cache_entry['content'], "cached": True}
+
     loop = asyncio.get_event_loop()
     # Pass promptType explicitly or let analyze_single_stock handle it from stock_data
     result = await loop.run_in_executor(None, analyze_single_stock, stock_data)
-    return {"status": "success", "analysis": result}
+    
+    # Update Cache
+    if result and not result.startswith("分析失败"):
+        ANALYSIS_CACHE[code] = {
+            "content": result,
+            "timestamp": time.time()
+        }
+        
+    return {"status": "success", "analysis": result, "cached": False}
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
