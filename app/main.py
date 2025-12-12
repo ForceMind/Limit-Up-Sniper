@@ -449,7 +449,10 @@ async def scheduler_loop():
                 mode = "after_hours"
 
         # Update Next Run Time for UI
-        SYSTEM_CONFIG["next_run_time"] = SYSTEM_CONFIG["last_run_time"] + interval_seconds
+        if SYSTEM_CONFIG["last_run_time"] == 0:
+             SYSTEM_CONFIG["next_run_time"] = current_timestamp
+        else:
+             SYSTEM_CONFIG["next_run_time"] = SYSTEM_CONFIG["last_run_time"] + interval_seconds
 
         # Task 1: Analysis
         if SYSTEM_CONFIG["auto_analysis_enabled"]:
@@ -502,7 +505,7 @@ def execute_analysis(mode="after_hours", hours=None):
     try:
         mode_name = "盘后复盘" if mode == "after_hours" else "盘中突击"
         thread_logger(f">>> 开始执行{mode_name}任务 (回溯{hours if hours else '默认'}小时)...")
-        generate_watchlist(logger=thread_logger, mode=mode, hours=hours)
+        generate_watchlist(logger=thread_logger, mode=mode, hours=hours, update_callback=refresh_watchlist)
         refresh_watchlist()
         thread_logger(f">>> {mode_name}任务完成，列表已更新。")
     except Exception as e:

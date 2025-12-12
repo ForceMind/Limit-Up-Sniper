@@ -538,13 +538,13 @@
             </div>
 
             <!-- Middle Column: Pools (Limit Up & Broken) -->
-            <div class="flex-1 min-w-0 flex flex-col gap-0 md:gap-2 h-full"
+            <div class="flex-1 min-w-0 flex flex-col md:flex-row gap-0 md:gap-2 h-full"
                  :class="{'hidden': isMobile && activeTab !== 'pool', 'flex': !isMobile || activeTab === 'pool'}"
                  v-show="!isMobile || activeTab === 'pool'">
                 
                 <!-- Limit Up Pool Section -->
                 <div class="flex-1 min-w-0 flex flex-col bg-white dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-300"
-                     :class="{'h-1/2': !isMobile, 'flex-1': isMobile && activePoolTab === 'limit_up', 'h-12 flex-none overflow-hidden': isMobile && activePoolTab !== 'limit_up'}">
+                     :class="{'h-1/2 md:h-full': !isMobile, 'flex-1': isMobile && activePoolTab === 'limit_up', 'h-12 flex-none overflow-hidden': isMobile && activePoolTab !== 'limit_up'}">
                     <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer md:cursor-default"
                          @click="isMobile ? activePoolTab = 'limit_up' : null">
                         <h2 class="text-yellow-600 dark:text-yellow-400 font-bold flex items-center gap-2 text-sm md:text-base">
@@ -621,7 +621,7 @@
 
                 <!-- Broken Limit Pool Section -->
                 <div class="flex-1 min-w-0 flex flex-col bg-white dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-300"
-                     :class="{'h-1/2': !isMobile, 'flex-1': isMobile && activePoolTab === 'broken', 'h-12 flex-none overflow-hidden': isMobile && activePoolTab !== 'broken'}">
+                     :class="{'h-1/2 md:h-full': !isMobile, 'flex-1': isMobile && activePoolTab === 'broken', 'h-12 flex-none overflow-hidden': isMobile && activePoolTab !== 'broken'}">
                     <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer md:cursor-default"
                          @click="isMobile ? activePoolTab = 'broken' : null">
                         <h2 class="text-gray-600 dark:text-gray-400 font-bold flex items-center gap-2 text-sm md:text-base">

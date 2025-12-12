@@ -82,11 +82,11 @@ def scan_intraday_limit_up(logger=None):
             if current >= limit_up_price - 0.01:
                 continue
 
-            # 阈值设定:
-            # 10cm: > 5%
-            # 20cm: > 10%
+            # 阈值设定 (用户自定义):
+            # 主板: > 5%
+            # 创业板/科创板: > 15%
             if is_20cm:
-                if change_percent < 10.0:
+                if change_percent < 15.0:
                     continue
             else:
                 if change_percent < 5.0:
@@ -99,7 +99,7 @@ def scan_intraday_limit_up(logger=None):
             # if not is_high_position and speed < 0.5:
             #    continue
             
-            # 只要涨幅达标(>5%)，全部纳入观察，不再强制要求涨速 (避免盘后或静默期无数据)
+            # 只要涨幅达标，全部纳入观察，不再强制要求涨速 (避免盘后或静默期无数据)
                 
             # 3. 排除 ST (名称带ST)
             if 'ST' in name:
@@ -353,7 +353,7 @@ def get_market_overview(logger=None):
         url = "http://push2.eastmoney.com/api/qt/clist/get"
         base_params = {
             "pn": 1,
-            "pz": 2000, # 分页获取
+            "pz": 3000, # Increase page size to reduce requests
             "po": 1,
             "np": 1,
             "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -374,7 +374,7 @@ def get_market_overview(logger=None):
             params = base_params.copy()
             params["pn"] = page
             try:
-                resp = requests.get(url, params=params, timeout=3)
+                resp = requests.get(url, params=params, timeout=5) # Increase timeout
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get('data') and data['data'].get('diff'):
@@ -383,9 +383,9 @@ def get_market_overview(logger=None):
                 pass
             return []
 
-        # 并发抓取 3 页 (覆盖约 6000 只股票)
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(fetch_page, page) for page in range(1, 4)]
+        # 并发抓取 2 页 (覆盖约 6000 只股票)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(fetch_page, page) for page in range(1, 3)]
             for future in as_completed(futures):
                 stocks = future.result()
                 for s in stocks:

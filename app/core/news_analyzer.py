@@ -318,13 +318,13 @@ def analyze_single_stock(stock_data, logger=None):
 
 【最终输出】
 请以 Markdown 格式输出简报：
-### 1. 核心抢筹理由 (Why Buy Tomorrow?)
+### 1. 核心抢筹理由
 (直击痛点，说明上涨预期)
 
 ### 2. 预期差与博弈点
 (分析主力意图和市场情绪)
 
-### 3. 竞价策略 (Action)
+### 3. 竞价策略
 - **关注价格**: (什么样的开盘价符合预期)
 - **止损位**: 
 - **胜率**: (高/中/低)
@@ -359,7 +359,7 @@ def analyze_single_stock(stock_data, logger=None):
 ### 2. 盘面深度解析
 (结合情绪与技术面分析)
 
-### 3. 操盘计划 (Action Plan)
+### 3. 操盘计划
 - **买入策略**: (具体的买点，如打板、低吸、半路)
 - **卖出策略**: (止盈止损位)
 - **胜率预估**: (高/中/低)
@@ -406,7 +406,7 @@ def analyze_single_stock(stock_data, logger=None):
     except Exception as e:
         return f"分析失败: {str(e)}"
 
-def generate_watchlist(logger=None, mode="after_hours", hours=None):
+def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callback=None):
     msg = f"[-] 启动{mode}分析 (AI Powered)..."
     print(msg)
     if logger: logger(msg)
@@ -475,6 +475,22 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None):
             }
             # 覆盖旧数据 (包括之前可能被标记为 Discarded 的，如果又满足条件了就复活)
             watchlist[code] = new_item
+            
+        # [新增] 立即保存并通知前端，实现"先加列表，再丰富数据"
+        try:
+            temp_list = list(watchlist.values())
+            temp_list.sort(key=lambda x: x['initial_score'], reverse=True)
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(temp_list, f, ensure_ascii=False, indent=2)
+            
+            if update_callback:
+                update_callback()
+                
+            msg = f"[-] 盘中扫描完成，已更新 {len(scanner_stocks)} 只候选股，开始AI分析..."
+            print(msg)
+            if logger: logger(msg)
+        except Exception as e:
+            print(f"Error saving intermediate watchlist: {e}")
             
     # 如果没有新闻，也至少跑一次市场数据分析
     if not news_items:
