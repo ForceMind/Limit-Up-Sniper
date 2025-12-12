@@ -63,6 +63,13 @@ def load_watchlist():
             return []
     return []
 
+def reload_watchlist_globals():
+    """重新加载全局变量 (复盘后调用)"""
+    global watchlist_data, watchlist_map, WATCH_LIST
+    watchlist_data = load_watchlist()
+    watchlist_map = {item['code']: item for item in watchlist_data}
+    WATCH_LIST = list(watchlist_map.keys())
+
 # 全局变量
 watchlist_data = load_watchlist()
 watchlist_map = {item['code']: item for item in watchlist_data}
@@ -546,7 +553,9 @@ def execute_analysis(mode="after_hours", hours=None):
         thread_logger(f">>> 开始执行{mode_name}任务 (回溯{hours if hours else '默认'}小时)...")
         generate_watchlist(logger=thread_logger, mode=mode, hours=hours, update_callback=refresh_watchlist)
         refresh_watchlist()
-        thread_logger(f">>> {mode_name}任务完成，列表已更新。")
+        # Reload globals so /api/stocks returns new data
+        reload_watchlist_globals()
+        thread_logger(f">>> {mode_name}任务完成，列表已更新 ({len(WATCH_LIST)} 个标的)。")
     except Exception as e:
         thread_logger(f"!!! 分析任务出错: {e}")
         print(f"Analysis Error: {e}")
