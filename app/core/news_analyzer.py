@@ -560,7 +560,8 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 "seal_rate": metrics['seal_rate'],
                 "broken_rate": metrics['broken_rate'],
                 "next_day_premium": metrics['next_day_premium'],
-                "limit_up_days": metrics['limit_up_days']
+                "limit_up_days": metrics['limit_up_days'],
+                "added_time": datetime.now().timestamp()
             }
             
             # 如果已存在，且新分数更高，则覆盖；否则保留旧的但更新指标
@@ -599,7 +600,8 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 "seal_rate": metrics['seal_rate'],
                 "broken_rate": metrics['broken_rate'],
                 "next_day_premium": metrics['next_day_premium'],
-                "limit_up_days": metrics['limit_up_days']
+                "limit_up_days": metrics['limit_up_days'],
+                "added_time": datetime.now().timestamp()
             }
 
     # 3. 保存结果
@@ -618,6 +620,27 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             
     # 合并本次分析结果
     # 如果代码在本次分析结果中，使用本次结果(包含最新分析)
+    # 同时保留 added_time
+    for code, item in watchlist.items():
+        if code in current_watchlist:
+            # Preserve original added_time if exists
+            if 'added_time' in current_watchlist[code]:
+                item['added_time'] = current_watchlist[code]['added_time']
+            else:
+                item['added_time'] = datetime.now().timestamp()
+        else:
+             item['added_time'] = datetime.now().timestamp()
+        current_watchlist[code] = item
+        
+    # 清理逻辑：保留最近 50 个，或者 3 天内的
+    # 这里简单实现：保留最近 50 个
+    sorted_items = sorted(current_watchlist.values(), key=lambda x: x.get('added_time', 0), reverse=True)
+    final_list = sorted_items[:50]
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(final_list, f, ensure_ascii=False, indent=2)
+        
+    return list(watchlist.values())
     # 如果代码不在本次结果中但在文件中(例如手动添加)，保留它
     for code, item in watchlist.items():
         current_watchlist[code] = item

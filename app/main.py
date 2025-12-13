@@ -15,6 +15,7 @@ from app.core.news_analyzer import generate_watchlist, analyze_single_stock
 from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
 from app.core.stock_utils import calculate_metrics
 from app.core.data_provider import data_provider
+from app.core.time_manager import TimeManager
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -133,16 +134,24 @@ async def update_market_pools_task():
     loop = asyncio.get_event_loop()
     while True:
         try:
-            # Run blocking IO in executor
-            new_limit_up = await loop.run_in_executor(None, scan_limit_up_pool)
-            if new_limit_up is not None: # Only update if not None (failed)
-                limit_up_pool_data = new_limit_up
-            
-            new_broken = await loop.run_in_executor(None, scan_broken_limit_pool)
-            if new_broken is not None:
-                broken_limit_pool_data = new_broken
+            # Check if we should scan
+            if TimeManager.is_trading_day() and TimeManager.is_trading_time():
+                # Run blocking IO in executor
+                new_limit_up = await loop.run_in_executor(None, scan_limit_up_pool)
+                if new_limit_up is not None: # Only update if not None (failed)
+                    limit_up_pool_data = new_limit_up
                 
-            await loop.run_in_executor(None, save_market_pools)
+                new_broken = await loop.run_in_executor(None, scan_broken_limit_pool)
+                if new_broken is not None:
+                    broken_limit_pool_data = new_broken
+                    
+                await loop.run_in_executor(None, save_market_pools)
+            else:
+                # If not trading time, maybe scan less frequently or just once to ensure data is loaded?
+                # For now, just sleep longer
+                await asyncio.sleep(60)
+                continue
+
         except Exception as e:
             print(f"Pool update error: {e}")
         
@@ -155,9 +164,8 @@ async def update_intraday_pool_task():
     loop = asyncio.get_event_loop()
     while True:
         try:
-            # Only run during trading hours (approx) and weekdays
-            now = datetime.now()
-            if now.weekday() < 5 and 9 <= now.hour < 15:
+            # Only run during trading hours
+            if TimeManager.is_trading_time():
                 result = await loop.run_in_executor(None, scan_intraday_limit_up)
                 if result:
                     intraday_stocks, sealed_stocks = result
@@ -170,9 +178,10 @@ async def update_intraday_pool_task():
                             if s['code'] not in existing_codes:
                                 limit_up_pool_data.append(s)
                                 existing_codes.add(s['code'])
-            
-            # Normal sleep
-            await asyncio.sleep(10)
+                await asyncio.sleep(10)
+            else:
+                # Sleep longer when market is closed
+                await asyncio.sleep(60)
             
         except Exception as e:
             print(f"Intraday scan error: {e}")
@@ -329,6 +338,85 @@ def update_limit_up_pool_task():
     except Exception as e:
         print(f"Error updating limit up pool: {e}")
 
+@app.get("/api/market_status")
+async def get_market_status():
+    return {
+        "is_trading_day": TimeManager.is_trading_day(),
+        "is_trading_time": TimeManager.is_trading_time(),
+        "message": TimeManager.get_market_status_message()
+    }
+
+@app.post("/api/watchlist/cleanup")
+async def cleanup_watchlist_api():
+    """Manually trigger watchlist cleanup"""
+    try:
+        cleanup_watchlist()
+        return {"status": "ok", "message": "Watchlist cleaned up"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def cleanup_watchlist():
+    """
+    Clean up watchlist: keep only last 50 items or items added within 3 days.
+    """
+    global watchlist_data, watchlist_map, WATCH_LIST
+    file_path = DATA_DIR / "watchlist.json"
+    if not file_path.exists():
+        return
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        # Sort by added_time desc
+        # If added_time is missing, treat as old (0)
+        data.sort(key=lambda x: x.get('added_time', 0), reverse=True)
+        
+        # Keep top 50
+        new_data = data[:50]
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(new_data, f, ensure_ascii=False, indent=2)
+            
+        # Reload globals
+        watchlist_data = new_data
+        watchlist_map = {item['code']: item for item in watchlist_data}
+        WATCH_LIST = list(watchlist_map.keys())
+        
+    except Exception as e:
+        print(f"Cleanup failed: {e}")
+
+async def update_watchlist_status_task():
+    """
+    Update watchlist stocks status (check for limit up)
+    """
+    global watchlist_data
+    loop = asyncio.get_event_loop()
+    while True:
+        try:
+            if TimeManager.is_trading_time() and watchlist_data:
+                codes = [item['code'] for item in watchlist_data]
+                quotes = await loop.run_in_executor(None, data_provider.fetch_quotes, codes)
+                
+                quote_map = {q['code']: q for q in quotes}
+                
+                for item in watchlist_data:
+                    code = item['code']
+                    if code in quote_map:
+                        q = quote_map[code]
+                        
+                        is_20cm = code.startswith('sz30') or code.startswith('sh68')
+                        limit_threshold = 19.5 if is_20cm else 9.5
+                        
+                        item['current_price'] = q['current']
+                        item['change_percent'] = q['change_percent']
+                        item['is_limit_up'] = q['change_percent'] >= limit_threshold
+                        
+            await asyncio.sleep(5)
+        except Exception as e:
+            print(f"Watchlist status update error: {e}")
+            await asyncio.sleep(10)
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(log_broadcaster())
@@ -338,6 +426,11 @@ async def startup_event():
     asyncio.create_task(update_market_pools_task())
     # Start fast intraday scanner
     asyncio.create_task(update_intraday_pool_task())
+    # Start watchlist status updater
+    asyncio.create_task(update_watchlist_status_task())
+    
+    # Initial cleanup
+    cleanup_watchlist()
     
     # 启动时立即执行一次盘中扫描，确保列表不为空
     print("Startup: Running initial intraday scan...")
