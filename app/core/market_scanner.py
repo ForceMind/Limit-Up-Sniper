@@ -391,3 +391,34 @@ def get_market_overview(logger=None):
     overview["stats"]["suggestion"] = suggestion
     
     return overview
+
+def get_hot_concepts(limit_up_pool):
+    """
+    从涨停池中提取热门概念
+    """
+    if not limit_up_pool:
+        return "无明显热点"
+        
+    concepts = []
+    for stock in limit_up_pool:
+        c = stock.get('concept', '')
+        if c:
+            # Split by common separators if needed, or just take the string
+            # Assuming concept is a string like "AI, Low Altitude"
+            parts = c.replace('，', ',').split(',')
+            concepts.extend([p.strip() for p in parts if p.strip()])
+            
+    if not concepts:
+        return "无明显热点"
+        
+    from collections import Counter
+    counter = Counter(concepts)
+    
+    # Get top 5 concepts
+    top_concepts = counter.most_common(5)
+    
+    summary = []
+    for concept, count in top_concepts:
+        summary.append(f"{concept}({count}家)")
+        
+    return "，".join(summary)

@@ -611,7 +611,7 @@
                             <!-- List -->
                             <div class="p-2 space-y-1">
                                 <transition-group name="list" tag="div" class="space-y-1">
-                                    <div v-for="(stock, index) in limitUpPool" :key="stock.code" 
+                                    <div v-for="(stock, index) in allLimitUpPool" :key="stock.code" 
                                          class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
                                          :class="getRowHighlightClass(stock)"
                                          style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
@@ -635,7 +635,7 @@
                                         </div>
                                     </div>
                                 </transition-group>
-                                <div v-if="limitUpPool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无涨停池目标</div>
+                                <div v-if="allLimitUpPool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无涨停池目标</div>
                             </div>
                         </div>
                     </div>
@@ -647,7 +647,7 @@
                     <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer md:cursor-default"
                          @click="isMobile ? activePoolTab = 'broken_plate' : null">
                         <h2 class="text-red-600 dark:text-red-400 font-bold flex items-center gap-2 text-sm md:text-base">
-                            <span>🛑</span> 断板股 (Broken Plate)
+                            <span>🛑</span> 炸板股 (Broken Limit)
                             <span v-if="isMobile && activePoolTab !== 'broken_plate'" class="text-xs text-gray-400">(点击展开)</span>
                         </h2>
                         <div class="flex items-center gap-2">
@@ -700,7 +700,7 @@
                                         </div>
                                     </div>
                                 </transition-group>
-                                <div v-if="brokenPlatePool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无断板股目标</div>
+                                <div v-if="brokenPlatePool.length === 0" class="text-center text-gray-500 dark:text-gray-600 py-4 text-xs">暂无炸板股目标</div>
                             </div>
                         </div>
                     </div>
@@ -710,23 +710,28 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref, onMounted, computed } = Vue;
 
         createApp({
             setup() {
                 // Reactive state variables
                 const activeTab = ref('pre');
+                const activePoolTab = ref('limit_up'); // Added for mobile pool tab switching
                 const showAggressivePanel = ref(true);
-                const showManualPanel = ref(false);
+                const showManualPanel = ref(true); // Default to true for visibility
                 const isEditMode = ref(false);
                 const searchQuery = ref('');
                 const searchResults = ref([]);
-                const aggressiveStocks = ref([]);
-                const limitUpStocks = ref([]);
-                const manualStocks = ref([]);
-                const limitUpWatchlist = ref([]);
+                
+                // Data Arrays - Initialize as empty arrays to prevent undefined errors
+                const stocks = ref([]); // Main watchlist data source
+                const limitUpPool = ref([]); // 涨停池
+                const brokenPlatePool = ref([]); // 炸板池
+                
+                // Computed properties will derive from these
                 const marketSentiment = ref(null);
-                const marketStatus = ref({});
+                const marketStatus = ref({ is_trading_day: true, is_trading_time: false, message: '加载中' });
+                
                 const systemConfig = ref({
                     auto_analysis_enabled: false,
                     use_smart_schedule: false,
@@ -741,11 +746,85 @@
                 const showFilterModal = ref(false);
                 const lastUpdated = ref('');
                 const isDataIncomplete = ref(false);
+                const isMobile = ref(window.innerWidth < 768);
+                const isAnalyzing = ref(false); // Added missing ref
+                
+                // Filter Settings
+                const filterSettings = ref({
+                    showMainBoard: true,
+                    showChiNext: true,
+                    showStar: true,
+                    showBSE: false
+                });
 
                 // Methods
                 const toggleTheme = () => {
                     isDark.value = !isDark.value;
                     document.documentElement.classList.toggle('dark', isDark.value);
+                };
+
+                // Helper for visibility
+                const checkBoardVisibility = (code) => {
+                    const rawCode = code.replace(/^(sh|sz|bj)/, '');
+                    if (rawCode.startsWith('8') || rawCode.startsWith('4') || rawCode.startsWith('92')) return filterSettings.value.showBSE;
+                    if (rawCode.startsWith('68')) return filterSettings.value.showStar;
+                    if (rawCode.startsWith('30')) return filterSettings.value.showChiNext;
+                    return filterSettings.value.showMainBoard;
+                };
+
+                // Computed Properties
+                const aggressiveStocks = computed(() => {
+                    return stocks.value.filter(s => s.strategy_type === 'Aggressive' && checkBoardVisibility(s.code));
+                });
+
+                const limitUpStocks = computed(() => {
+                    // 盘中打板：过滤掉已涨停的（即在limitUpPool中的）
+                    return stocks.value.filter(s => !s.is_limit_up && checkBoardVisibility(s.code));
+                });
+
+                const manualStocks = computed(() => {
+                    return stocks.value.filter(s => s.strategy_type !== 'Aggressive' && !s.is_limit_up && checkBoardVisibility(s.code));
+                });
+
+                const limitUpWatchlist = computed(() => {
+                    return stocks.value.filter(s => s.is_limit_up && checkBoardVisibility(s.code));
+                });
+
+                // 炸板池直接用ref
+                // allLimitUpPool用于中间池tab
+                const allLimitUpPool = computed(() => {
+                    return limitUpPool.value.filter(s => checkBoardVisibility(s.code));
+                });
+
+                const fetchData = async () => {
+                    try {
+                        const response = await fetch('/api/stocks');
+                        const data = await response.json();
+                        // Update stocks ref
+                        stocks.value = data;
+                        console.log('fetchData result count:', Array.isArray(data) ? data.length : typeof data, data);
+                        lastUpdated.value = new Date().toLocaleTimeString();
+                    } catch (error) {
+                        console.error('Data fetch failed:', error);
+                    }
+                };
+
+                const fetchLimitUpPool = async () => {
+                    try {
+                        const response = await fetch('/api/limit_up_pool');
+                        const data = await response.json();
+                        console.log('fetchLimitUpPool raw:', data);
+                        if (data.limit_up) {
+                            // Mark sealed status for filtering
+                            limitUpPool.value = data.limit_up.map(s => ({...s, is_sealed: true})); 
+                            brokenPlatePool.value = data.broken || [];
+                        } else {
+                            limitUpPool.value = data.map(s => ({...s, is_sealed: true}));
+                            brokenPlatePool.value = [];
+                        }
+                    } catch (error) {
+                        console.error('Limit Up Pool fetch failed:', error);
+                    }
                 };
 
                 const fetchMarketSentiment = async () => {
@@ -801,12 +880,15 @@
 
                 // Fetch initial data
                 onMounted(() => {
+                    fetchData();
+                    fetchLimitUpPool();
                     fetchMarketSentiment();
                     fetchMarketStatus();
                 });
 
                 return {
                     activeTab,
+                    activePoolTab, // Added missing return
                     showAggressivePanel,
                     showManualPanel,
                     isEditMode,
@@ -816,6 +898,9 @@
                     limitUpStocks,
                     manualStocks,
                     limitUpWatchlist,
+                    limitUpPool,
+                    brokenPlatePool,
+                    allLimitUpPool,
                     marketSentiment,
                     marketStatus,
                     systemConfig,
@@ -825,6 +910,8 @@
                     showFilterModal,
                     lastUpdated,
                     isDataIncomplete,
+                    isMobile, // Added missing return
+                    isAnalyzing, // Added missing return
                     toggleTheme,
                     fetchMarketSentiment,
                     fetchMarketStatus,
@@ -835,6 +922,16 @@
                     analyzeStock,
                     saveConfig,
                     formatTime,
+                    getRowHighlightClass: (stock) => { // Added helper function
+                        if (stock.strategy_type === 'Aggressive') return 'bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-500/20';
+                        if (stock.is_limit_up) return 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-500/20';
+                        return 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+                    },
+                    getColorClass: (percent) => { // Added helper function
+                        if (percent > 0) return 'text-red-600 dark:text-red-400';
+                        if (percent < 0) return 'text-green-600 dark:text-green-400';
+                        return 'text-gray-600 dark:text-gray-400';
+                    }
                 };
             },
         }).mount('#app');

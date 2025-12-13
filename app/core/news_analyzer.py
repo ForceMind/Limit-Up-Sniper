@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 from app.core.stock_utils import calculate_metrics
-from app.core.market_scanner import scan_intraday_limit_up, get_market_overview, scan_limit_up_pool, scan_broken_limit_pool
+from app.core.market_scanner import scan_intraday_limit_up, get_market_overview, scan_limit_up_pool, scan_broken_limit_pool, get_hot_concepts
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -40,6 +40,15 @@ def get_market_data(logger=None):
             # 简单列出前 10 个
             top_stocks = pool[:10]
             market_summary += f"涨停代表: " + ", ".join([f"{s['name']}" for s in top_stocks]) + "\n"
+            
+            # [新增] 热点概念分析
+            try:
+                hot_concepts_str = get_hot_concepts(pool)
+                if hot_concepts_str:
+                    market_summary += f"【热点概念】: {hot_concepts_str}\n"
+            except Exception as e:
+                if logger: logger(f"[!] 热点概念分析失败: {e}")
+                
     except Exception as e:
         if logger: logger(f"[!] 获取涨停数据失败: {e}")
 
@@ -165,8 +174,12 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
     # 构造 Prompt
     news_content = "\n".join([f"{i+1}. {n['text']}" for i, n in enumerate(news_batch)])
     
+    # 获取当前关注列表 (用于剔除建议)
+    from app.main import watchlist_data
+    current_watchlist_str = ", ".join([f"{item['name']}({item['code']})" for item in watchlist_data]) if watchlist_data else "无"
+
     if mode == "after_hours":
-        task_desc = "进行【盘后复盘】并挖掘【明日竞价关注股】"
+        task_desc = "进行【盘后复盘】并挖掘【明日竞价关注股】，同时检查现有关注列表是否需要剔除"
         strategy_desc = """
 1. **Aggressive (竞价抢筹)**: 
    - 核心龙头的一字板预期，或今日强势连板股的弱转强。
@@ -174,9 +187,12 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 2. **LimitUp (盘中打板)**: 
    - 首板挖掘，或大盘共振的低位补涨股。
    - 策略：放入自选，盘中观察，如果快速拉升或封板则买入。
+3. **Remove (剔除建议)**:
+   - 现有关注列表中，逻辑证伪、利好兑现或走势破位的个股。
+   - 策略：建议从关注列表中移除。
 """
     else: # intraday
-        task_desc = "进行【盘中实时分析】并挖掘【当前即将涨停股】"
+        task_desc = "进行【盘中实时分析】并挖掘【当前即将涨停股】，同时检查现有关注列表是否需要剔除"
         strategy_desc = """
 1. **Aggressive (立即扫货)**: 
    - 突发重大利好，股价正在快速拉升，即将封板。
@@ -184,6 +200,9 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 2. **LimitUp (回封低吸)**: 
    - 炸板回落但承接有力，或分时均线支撑强。
    - 策略：低吸博弈回封。
+3. **Remove (剔除建议)**:
+   - 现有关注列表中，逻辑证伪、利好兑现或走势破位的个股。
+   - 策略：建议从关注列表中移除。
 """
 
     system_prompt = f"""
@@ -192,10 +211,14 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 【今日市场数据】
 {market_summary}
 
+【当前关注列表】
+{current_watchlist_str}
+
 【最新舆情新闻】
 {news_content}
 
-请结合市场数据（涨停梯队、炸板情况、涨跌家数）和新闻舆情，分析市场情绪主线，并预测关注标的。
+请结合市场数据（涨停梯队、炸板情况、涨跌家数、**当前热点概念**）和新闻舆情，分析市场情绪主线，并预测关注标的。
+**特别注意**：请根据最新信息，指出当前关注列表中应当剔除的标的（如果有）。
 
 请严格按照以下标准分类：
 {strategy_desc}
@@ -217,6 +240,12 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
       "reason": "结合今日表现(如3连板)和新闻利好的综合理由", 
       "score": 8.5, 
       "strategy": "Aggressive" 
+    }}
+  ],
+  "remove": [
+    {{
+      "code": "sz000xxx",
+      "reason": "利好兑现/逻辑证伪"
     }}
   ]
 }}
@@ -243,28 +272,28 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
             msg = f"[!] AI API Error: {response.text}"
             print(msg)
             if logger: logger(msg)
-            return []
+            return [], []
             
         result = response.json()
         if not result or 'choices' not in result or not result['choices']:
-            return []
+            return [], []
             
         content = result['choices'][0]['message']['content']
         if not content:
-            return []
+            return [], []
         
         # 清洗可能存在的 Markdown 标记
         content = re.sub(r'```json\s*', '', content)
         content = re.sub(r'```\s*', '', content)
         
         data = json.loads(content)
-        return data.get("stocks", [])
+        return data.get("stocks", []), data.get("remove", [])
         
     except Exception as e:
         msg = f"[!] Analysis Failed: {e}"
         print(msg)
         if logger: logger(msg)
-        return []
+        return [], []
 
 def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None):
     """
@@ -520,8 +549,31 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         # 只有第一批带上完整的 market_summary，避免重复消耗 token
         current_market_summary = market_summary if i == 0 else "（市场数据参考上文）"
         
-        analyzed_stocks = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger, mode=mode)
+        analyzed_stocks, remove_list = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger, mode=mode)
         
+        # 处理AI建议剔除的股票
+        if remove_list:
+            for rm_item in remove_list:
+                rm_code = rm_item.get('code', '')
+                rm_reason = rm_item.get('reason', 'AI建议剔除')
+                
+                # 简单的代码格式修正
+                if not (rm_code.startswith('sh') or rm_code.startswith('sz') or rm_code.startswith('bj')):
+                    if rm_code.startswith('6'): rm_code = 'sh' + rm_code
+                    elif rm_code.startswith('0') or rm_code.startswith('3'): rm_code = 'sz' + rm_code
+                    elif rm_code.startswith('8') or rm_code.startswith('4') or rm_code.startswith('9'): rm_code = 'bj' + rm_code
+                
+                if rm_code in watchlist:
+                    # 标记为 Discarded
+                    watchlist[rm_code]['strategy_type'] = 'Discarded'
+                    # 避免重复添加理由
+                    if 'AI剔除' not in watchlist[rm_code]['news_summary']:
+                        watchlist[rm_code]['news_summary'] = f"[AI剔除] {rm_reason}"
+                    
+                    msg = f"    [-] AI建议剔除: {watchlist[rm_code]['name']} ({rm_code}) - {rm_reason}"
+                    print(msg)
+                    if logger: logger(msg)
+
         for stock in analyzed_stocks:
             code = stock['code']
             # 简单的代码格式修正 (确保是 sh/sz/bj 开头)
