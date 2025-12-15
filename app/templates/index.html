@@ -421,7 +421,7 @@
                                     </div>
                                     <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
                                         <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
-                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
+                                        <button @click.stop="analyzeStock(stock, 'limitup')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                             🤖
                                         </button>
                                     </div>
@@ -537,7 +537,7 @@
                                     </div>
                                     <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
                                         <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
-                                        <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
+                                        <button @click.stop="analyzeStock(stock, 'manual')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                             🤖
                                         </button>
                                     </div>
@@ -627,7 +627,7 @@
                                         </div>
                                         <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 overflow-hidden">
                                             <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
-                                            <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
+                                            <button @click.stop="analyzeStock(stock, 'limitup')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
                                             </button>
                                         </div>
@@ -704,7 +704,7 @@
                                         </div>
                                         <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 overflow-hidden">
                                             <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
-                                            <button @click.stop="analyzeStock(stock)" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
+                                            <button @click.stop="analyzeStock(stock, 'limitup')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                                 🤖
                                             </button>
                                         </div>
@@ -912,6 +912,7 @@
                     analysisLoading: false,
                     isReanalyzing: false, // New flag for re-analysis
                     currentAnalysisStock: null,
+                    currentPromptType: 'default',
                     isEditMode: false,
                     activePoolTab: 'limit_up', // 'limit_up' or 'broken'
                     // Settings
@@ -1289,6 +1290,7 @@
                 async analyzeStock(stock, promptType = 'default') {
                     this.analyzingStockName = stock.name;
                     this.currentAnalysisStock = stock;
+                    this.currentPromptType = promptType; // Store prompt type
                     this.showAnalysisModal = true;
                     this.isAnalyzingStock = true;
                     this.analysisLoading = true;
@@ -1349,7 +1351,7 @@
                 async reAnalyzeStock() {
                     if (!this.currentAnalysisStock) return;
                     const stock = this.currentAnalysisStock;
-                    const promptType = stock.strategy === 'Aggressive' ? 'aggressive' : 'default';
+                    const promptType = this.currentPromptType || 'default';
                     
                     this.analysisLoading = true;
                     this.isReanalyzing = true;

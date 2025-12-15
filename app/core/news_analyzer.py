@@ -482,7 +482,7 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     prompt_type = stock_data.get('promptType', 'default')
     
     # Rate Limit Check
-    cache_key = f"stock_analysis_{code}"
+    cache_key = f"stock_analysis_{code}_{prompt_type}"
     last_ts = ai_cache.get_timestamp(cache_key)
     time_diff = int(time.time()) - last_ts
     
@@ -547,6 +547,73 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - **胜率**: (高/中/低)
 
 请保持语言犀利、极简，直击核心。
+
+【分析时间】{current_ts_str}
+"""
+    elif prompt_type == 'limitup':
+        prompt = f"""
+你是一位专注于打板和连板接力的短线高手。请针对今日涨停/冲击涨停的股票【{name} ({code})】进行深度复盘。
+
+【今日盘面数据】
+- 现价: {price}
+- 涨幅: {change}%
+- 换手率: {turnover}%
+- 流通市值: {circ_value}
+- 概念: {concept}
+- 连板高度/指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
+
+【分析逻辑】
+1. **涨停质量**: 封单如何？是否烂板？是主动进攻还是被动跟风？
+2. **板块地位**: 是龙头、中军还是补涨？板块梯队是否完整？
+3. **明日推演**: 预期是高开秒板、分歧换手还是直接核按钮？
+
+【最终输出】
+请以 Markdown 格式输出简报：
+### 1. 涨停质量评估
+(分析封板力度和主力意图)
+
+### 2. 板块地位与梯队
+(明确其在板块中的角色)
+
+### 3. 明日接力策略
+- **预期开盘**: (高开/平开/低开)
+- **买入条件**: (什么情况下可以接力)
+- **风险提示**: (最大的坑在哪里)
+
+请保持语言犀利、专业，拒绝模棱两可。
+
+【分析时间】{current_ts_str}
+"""
+    elif prompt_type == 'manual':
+        prompt = f"""
+你是一位稳健的波段交易者和基本面研究员。请对自选股【{name} ({code})】进行全方位的价值与趋势分析。
+
+【当前数据】
+- 现价: {price}
+- 涨跌幅: {change}%
+- 换手率: {turnover}%
+- 流通市值: {circ_value}
+- 核心概念: {concept}
+
+【分析逻辑】
+1. **基本面/题材**: 公司核心业务是什么？近期是否有催化剂（业绩、政策、重组）？
+2. **技术趋势**: 当前处于上升趋势、震荡还是下跌中继？关键支撑压力位在哪里？
+3. **资金流向**: 近期是否有主力资金持续流入迹象？
+
+【最终输出】
+请以 Markdown 格式输出简报：
+### 1. 核心价值与题材
+(简述基本面亮点)
+
+### 2. 趋势与资金分析
+(技术面判断)
+
+### 3. 操作建议
+- **适合策略**: (短线/中线/观望)
+- **买入区间**: 
+- **止损位**: 
+
+请客观理性，注重风险控制。
 
 【分析时间】{current_ts_str}
 """
