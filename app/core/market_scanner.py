@@ -364,6 +364,9 @@ def get_market_overview(logger=None):
 
     # 4. 计算情绪
     zt_count = overview["stats"]["limit_up_count"]
+    up_count = overview["stats"]["up_count"]
+    down_count = overview["stats"]["down_count"]
+    
     sh_change = 0
     for idx in overview["indices"]:
         if idx["name"] == "上证指数":
@@ -373,17 +376,19 @@ def get_market_overview(logger=None):
     sentiment = "Neutral"
     suggestion = "观察"
     
-    if zt_count > 50 and sh_change > -0.5:
+    # 更加严格的判断逻辑
+    if zt_count > 45 and sh_change > 0 and up_count > down_count:
         sentiment = "High"
         suggestion = "积极打板"
-    elif zt_count < 20 or sh_change < -1.0:
+    elif zt_count < 15 or sh_change < -0.8 or down_count > (up_count * 1.5):
         sentiment = "Low"
         suggestion = "谨慎出手"
     else:
         sentiment = "Neutral"
         suggestion = "去弱留强"
         
-    if sh_change < -1.5 and overview["stats"]["total_volume"] > 10000:
+    # 恐慌盘判断
+    if sh_change < -1.5 or (sh_change < -0.5 and down_count > 3500):
         sentiment = "Panic"
         suggestion = "空仓避险"
         

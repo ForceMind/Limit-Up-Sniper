@@ -59,8 +59,6 @@ def load_watchlist():
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Clean up watchlist: remove duplicates, keep latest
-                # Also maybe remove very old ones? For now just load.
                 return data
         except:
             return []
@@ -75,14 +73,31 @@ def save_watchlist(data):
     except Exception as e:
         print(f"Error saving watchlist: {e}")
 
+def load_favorites():
+    """加载自选股列表 (长期关注)"""
+    file_path = DATA_DIR / "favorites.json"
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_favorites(data):
+    """保存自选股列表"""
+    file_path = DATA_DIR / "favorites.json"
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving favorites: {e}")
+
 def clean_watchlist():
     """
-    Clean up watchlist:
-    1. Remove duplicates (keep latest)
-    2. Remove stocks added > 5 days ago if they haven't been updated?
-       (Actually user might want to keep them, so maybe just duplicates for now)
+    Clean up watchlist (AI generated only)
     """
-    global watchlist_data, watchlist_map, WATCH_LIST
+    global watchlist_data
     
     if not watchlist_data:
         return
@@ -90,18 +105,13 @@ def clean_watchlist():
     seen = set()
     new_list = []
     
-    # Iterate from newest (assuming list is appended, so reverse to keep latest if we prepend? 
-    # Actually let's just keep unique codes, preferring the existing order or re-ordering?)
-    # User asked: "New added should be at top".
-    # So we should ensure when adding, we insert at 0.
-    
-    # Here we just deduplicate based on code
+    # Keep unique codes
     for item in watchlist_data:
         if item['code'] not in seen:
             seen.add(item['code'])
             new_list.append(item)
             
-    # Limit size? e.g. max 50
+    # Limit size
     if len(new_list) > 50:
         new_list = new_list[:50]
         
@@ -110,16 +120,23 @@ def clean_watchlist():
     reload_watchlist_globals()
 
 def reload_watchlist_globals():
-    """重新加载全局变量 (复盘后调用)"""
-    global watchlist_data, watchlist_map, WATCH_LIST
+    """重新加载全局变量"""
+    global watchlist_data, watchlist_map, WATCH_LIST, favorites_data, favorites_map
     watchlist_data = load_watchlist()
     watchlist_map = {item['code']: item for item in watchlist_data}
-    WATCH_LIST = list(watchlist_map.keys())
+    
+    favorites_data = load_favorites()
+    favorites_map = {item['code']: item for item in favorites_data}
+    
+    # WATCH_LIST includes both
+    WATCH_LIST = list(set(list(watchlist_map.keys()) + list(favorites_map.keys())))
 
 # 全局变量
 watchlist_data = load_watchlist()
 watchlist_map = {item['code']: item for item in watchlist_data}
-WATCH_LIST = list(watchlist_map.keys())
+favorites_data = load_favorites()
+favorites_map = {item['code']: item for item in favorites_data}
+WATCH_LIST = list(set(list(watchlist_map.keys()) + list(favorites_map.keys())))
 limit_up_pool_data = []
 broken_limit_pool_data = []
 intraday_pool_data = [] # New global for fast intraday pool
@@ -148,6 +165,11 @@ def save_analysis_cache():
 @app.on_event("startup")
 async def startup_event():
     load_analysis_cache()
+    
+    # Update base info (CircMV etc) on startup
+    print("Startup: Updating base stock info...")
+    await asyncio.to_thread(data_provider.update_base_info)
+    
     # Initial load
     asyncio.create_task(scheduled_tasks())
 
@@ -194,36 +216,54 @@ async def get_status():
 
 @app.get("/api/add_watchlist")
 async def add_to_watchlist_api(code: str, name: str, reason: str = "手动添加"):
-    global watchlist_data
+    global favorites_data, watchlist_map
     
-    # Check if exists
-    for item in watchlist_data:
+    # Check if exists in favorites
+    for item in favorites_data:
         if item['code'] == code:
-            return {"status": "exists", "msg": "已在关注列表中"}
+            return {"status": "exists", "msg": "已在自选列表中"}
             
+    # Try to preserve existing info if it was in AI list
+    existing_info = watchlist_map.get(code, {})
+    
     new_item = {
         "code": code,
         "name": name,
         "reason": reason,
-        "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "strategy_type": "Manual",
+        "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "concept": existing_info.get("concept", ""),
+        "initial_score": existing_info.get("initial_score", 0)
     }
     
     # Insert at top
-    watchlist_data.insert(0, new_item)
-    save_watchlist(watchlist_data)
+    favorites_data.insert(0, new_item)
+    save_favorites(favorites_data)
     reload_watchlist_globals()
     
     return {"status": "ok", "msg": "添加成功"}
 
 @app.get("/api/remove_watchlist")
 async def remove_from_watchlist_api(code: str):
-    global watchlist_data
+    global favorites_data, watchlist_data
     
-    original_len = len(watchlist_data)
+    removed = False
+    
+    # Remove from favorites
+    original_len = len(favorites_data)
+    favorites_data = [item for item in favorites_data if item['code'] != code]
+    if len(favorites_data) < original_len:
+        save_favorites(favorites_data)
+        removed = True
+        
+    # Remove from AI watchlist
+    original_len_w = len(watchlist_data)
     watchlist_data = [item for item in watchlist_data if item['code'] != code]
-    
-    if len(watchlist_data) < original_len:
+    if len(watchlist_data) < original_len_w:
         save_watchlist(watchlist_data)
+        removed = True
+    
+    if removed:
         reload_watchlist_globals()
         return {"status": "ok", "msg": "删除成功"}
         
@@ -751,10 +791,17 @@ def get_stock_quotes():
         enriched_stocks = []
         for stock in raw_stocks:
             code = stock['code']
-            strategy_info = watchlist_map.get(code, {})
+            
+            # Priority: Favorites > Watchlist
+            if code in favorites_map:
+                strategy_info = favorites_map[code]
+                # Force Manual strategy for display
+                stock['strategy'] = 'Manual'
+            else:
+                strategy_info = watchlist_map.get(code, {})
+                stock['strategy'] = strategy_info.get("strategy_type", "Neutral")
             
             # Merge strategy info
-            stock['strategy'] = strategy_info.get("strategy_type", "Neutral")
             stock['initial_score'] = strategy_info.get("initial_score", 0)
             stock['concept'] = strategy_info.get("concept", "-")
             stock['seal_rate'] = strategy_info.get("seal_rate", 0)
@@ -772,22 +819,29 @@ def get_stock_quotes():
 @app.post("/api/watchlist/remove")
 async def remove_from_watchlist(request: Request):
     """从自选列表中移除股票"""
-    global watchlist_data, watchlist_map, WATCH_LIST
+    global watchlist_data, watchlist_map, WATCH_LIST, favorites_data, favorites_map
     try:
         data = await request.json()
         code = data.get("code")
-        if code and code in watchlist_map:
-            # Remove from memory
-            del watchlist_map[code]
-            watchlist_data = list(watchlist_map.values())
-            WATCH_LIST = list(watchlist_map.keys())
-            
-            # Save to disk
-            file_path = DATA_DIR / "watchlist.json"
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
+        
+        removed = False
+        if code:
+            # Remove from favorites
+            if code in favorites_map:
+                favorites_data = [item for item in favorites_data if item['code'] != code]
+                save_favorites(favorites_data)
+                removed = True
                 
-            return {"status": "success", "message": f"Removed {code}"}
+            # Remove from watchlist
+            if code in watchlist_map:
+                watchlist_data = [item for item in watchlist_data if item['code'] != code]
+                save_watchlist(watchlist_data)
+                removed = True
+                
+            if removed:
+                reload_watchlist_globals()
+                return {"status": "success", "message": f"Removed {code}"}
+                
         return {"status": "error", "message": "Stock not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -795,6 +849,11 @@ async def remove_from_watchlist(request: Request):
 @app.get("/api/stocks")
 async def api_stocks():
     return get_stock_quotes()
+
+@app.get("/api/indices")
+async def api_indices():
+    """快速获取大盘指数"""
+    return data_provider.fetch_indices()
 
 @app.get("/api/limit_up_pool")
 async def api_limit_up_pool():

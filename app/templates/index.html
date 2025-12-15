@@ -1180,6 +1180,19 @@
                         console.error('Data fetch failed:', error);
                     }
                 },
+                async fetchIndices() {
+                    try {
+                        const response = await fetch('/api/indices');
+                        const data = await response.json();
+                        if (data && data.length > 0) {
+                            // Update indices in marketSentiment object to reflect in UI
+                            if (!this.marketSentiment) this.marketSentiment = {};
+                            this.marketSentiment.indices = data;
+                        }
+                    } catch (error) {
+                        console.error('Indices fetch failed:', error);
+                    }
+                },
                 async fetchLimitUpPool() {
                     try {
                         const response = await fetch('/api/limit_up_pool');
@@ -1444,6 +1457,7 @@
                 this.fetchData();
                 this.fetchLimitUpPool();
                 this.fetchMarketSentiment();
+                this.fetchIndices(); // Initial fetch
                 this.connectWebSocket();
                 
                 // Intelligent Polling
@@ -1458,12 +1472,10 @@
                     const timeVal = h * 100 + m;
                     const isTrading = (timeVal >= 915 && timeVal <= 1130) || (timeVal >= 1300 && timeVal <= 1500);
                     
-                    // 1. Stocks Data: 3s during trading, else pause (or very slow)
+                    // 1. Stocks Data & Indices: 3s during trading
                     if (isTrading) {
                         this.fetchData();
-                    } else {
-                        // Optional: fetch once every minute just in case
-                        // if (now.getSeconds() < 5) this.fetchData();
+                        this.fetchIndices(); // Fast update for indices
                     }
                 }, 3000);
 

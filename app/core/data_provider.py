@@ -58,6 +58,16 @@ class DataProvider:
         return []
 
     def _fetch_quotes_sina(self, codes):
+        # Prepare base info map for CircMV calculation
+        base_map = {}
+        if self._base_info_df is not None:
+            # Create a dict for fast lookup: code -> circ_shares
+            # Assuming _base_info_df has 'code' and 'circ_shares'
+            try:
+                base_map = dict(zip(self._base_info_df['code'], self._base_info_df['circ_shares']))
+            except:
+                pass
+
         # Sina supports batch, but URL length limit exists.
         # Split into batches of 50
         stocks = []
@@ -117,6 +127,12 @@ class DataProvider:
                         if ask1_vol == 0:
                             is_sealed = True
                     
+                    # Calculate CircMV
+                    circ_mv = 0
+                    circ_shares = base_map.get(code, 0)
+                    if circ_shares > 0:
+                        circ_mv = circ_shares * current
+                    
                     stocks.append({
                         "code": code,
                         "name": name,
@@ -129,7 +145,8 @@ class DataProvider:
                         "limit_up_price": limit_up_price,
                         "is_limit_up": is_sealed, # Use strict check
                         "ask1_vol": ask1_vol,
-                        "bid1_price": bid1_price
+                        "bid1_price": bid1_price,
+                        "circ_mv": circ_mv # Added CircMV
                     })
             except Exception as e:
                 self.log(f"[!] Batch fetch failed: {e}")
@@ -405,7 +422,7 @@ class DataProvider:
             return True
         return False
 
-    def _update_base_info(self):
+    def update_base_info(self):
         """Fetch base info (Name, CircMV, CircShares) from AKShare."""
         try:
             self.log("[*] Updating base stock info from AKShare...")
@@ -457,7 +474,7 @@ class DataProvider:
         """
         # 1. Ensure base info is available (refresh if older than 1 hour)
         if self._base_info_df is None or time.time() - self._base_info_ts > 3600:
-            self._update_base_info()
+            self.update_base_info()
             
         # 2. Prepare list
         if self._base_info_df is not None and not self._base_info_df.empty:

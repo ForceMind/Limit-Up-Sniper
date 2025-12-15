@@ -181,6 +181,9 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
     # 构造 Prompt
     news_content = "\n".join([f"{i+1}. {n['text']}" for i, n in enumerate(news_batch)])
     
+    # 动态调整策略描述基于市场情绪
+    is_market_bad = "情绪: Low" in market_summary or "情绪: Panic" in market_summary
+    
     if mode == "after_hours":
         task_desc = "进行【盘后复盘】并挖掘【明日竞价关注股】"
         strategy_desc = """
@@ -200,6 +203,14 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 2. **LimitUp (回封低吸)**: 
    - 炸板回落但承接有力，或分时均线支撑强。
    - 策略：低吸博弈回封。
+"""
+
+    if is_market_bad:
+        strategy_desc += """
+\n【特别警告】
+当前市场情绪极差（Low/Panic）。请务必保守！
+除非是市场最高板的绝对龙头（辨识度极高），否则不要推荐 Aggressive 策略。
+对于普通利好，直接忽略或仅作为观察。
 """
 
     system_prompt = f"""
