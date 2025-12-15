@@ -272,7 +272,7 @@ async def remove_from_watchlist_api(code: str):
 
 def load_market_pools():
     """Load market pools from disk"""
-    global limit_up_pool_data, broken_limit_pool_data
+    global limit_up_pool_data, broken_limit_pool_data, intraday_pool_data
     file_path = DATA_DIR / "market_pools.json"
     if file_path.exists():
         try:
@@ -280,6 +280,7 @@ def load_market_pools():
                 data = json.load(f)
                 limit_up_pool_data = data.get("limit_up", [])
                 broken_limit_pool_data = data.get("broken", [])
+                intraday_pool_data = data.get("intraday", [])
         except:
             pass
 
@@ -290,7 +291,8 @@ def save_market_pools():
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump({
                 "limit_up": limit_up_pool_data,
-                "broken": broken_limit_pool_data
+                "broken": broken_limit_pool_data,
+                "intraday": intraday_pool_data
             }, f, ensure_ascii=False)
     except:
         pass

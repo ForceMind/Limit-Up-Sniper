@@ -65,19 +65,20 @@
                     <h1 class="text-lg md:text-xl font-bold tracking-wider text-red-600 dark:text-red-500">涨停狙击手 <span class="hidden md:inline text-xs text-gray-500 ml-2">指挥中心</span></h1>
                 </div>
                 <!-- Mobile Tab Switcher -->
-                <div class="flex md:hidden bg-gray-200 dark:bg-gray-800 rounded p-1">
-                    <button @click="activeTab = 'pre'" class="px-2 py-1 text-xs rounded transition-colors" :class="activeTab === 'pre' ? 'bg-purple-600 text-white' : 'text-gray-500 dark:text-gray-400'">竞价</button>
-                    <button @click="activeTab = 'pool'" class="px-2 py-1 text-xs rounded transition-colors" :class="activeTab === 'pool' ? 'bg-yellow-600 text-white' : 'text-gray-500 dark:text-gray-400'">涨停</button>
-                    <button @click="activeTab = 'intra'" class="px-2 py-1 text-xs rounded transition-colors" :class="activeTab === 'intra' ? 'bg-red-600 text-white' : 'text-gray-500 dark:text-gray-400'">盘中</button>
-                    <button @click="activeTab = 'manual'" class="px-2 py-1 text-xs rounded transition-colors" :class="activeTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400'">自选</button>
+                <div class="flex md:hidden bg-gray-200 dark:bg-gray-800 rounded p-1 overflow-x-auto max-w-[200px] sm:max-w-none">
+                    <button @click="activeTab = 'pre'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'pre' ? 'bg-purple-600 text-white' : 'text-gray-500 dark:text-gray-400'">竞价</button>
+                    <button @click="activeTab = 'pool'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'pool' ? 'bg-yellow-600 text-white' : 'text-gray-500 dark:text-gray-400'">涨停</button>
+                    <button @click="activeTab = 'intra'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'intra' ? 'bg-red-600 text-white' : 'text-gray-500 dark:text-gray-400'">盘中</button>
+                    <button @click="activeTab = 'manual'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400'">自选</button>
                 </div>
             </div>
             
             <div class="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between md:justify-end">
-                <!-- Filter Button -->
-                <button @click="showFilterModal = true" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors" title="过滤设置">
+                <!-- Settings Button (Merged Filter & Config) -->
+                <button @click="showSettingsModal = true" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors" title="系统设置">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                 </button>
 
@@ -791,59 +792,102 @@
             </div>
         </div>
 
-        <!-- Filter Modal -->
-        <div v-if="showFilterModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showFilterModal = false">
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-sm flex flex-col">
+        <!-- Settings Modal (Merged Filter & Config) -->
+        <div v-if="showSettingsModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showSettingsModal = false">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
                 <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                        🔍 股票过滤设置
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        ⚙️ 系统设置
                     </h3>
-                    <button @click="showFilterModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button @click="showSettingsModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
-                <div class="p-6 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <span class="text-gray-700 dark:text-gray-300">主板 (60/00)</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" v-model="filterSettings.showMainBoard" class="sr-only peer" @change="saveFilterSettings">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                        </label>
+                
+                <div class="p-6 overflow-y-auto space-y-6">
+                    <!-- 1. Filter Settings -->
+                    <div>
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                            <span>🔍</span> 市场过滤
+                        </h4>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">主板 (60/00)</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="filterSettings.showMainBoard" class="sr-only peer" @change="saveFilterSettings">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">创业板 (30)</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="filterSettings.showChiNext" class="sr-only peer" @change="saveFilterSettings">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">科创板 (68)</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="filterSettings.showStar" class="sr-only peer" @change="saveFilterSettings">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">北交所 (8/4/92)</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="filterSettings.showBSE" class="sr-only peer" @change="saveFilterSettings">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-gray-700 dark:text-gray-300">创业板 (30)</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" v-model="filterSettings.showChiNext" class="sr-only peer" @change="saveFilterSettings">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                        </label>
-                    </div>
-                    
-                    <!-- API Key Setting -->
+
+                    <!-- 2. Automation Settings -->
                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">API 设置 (独立版专用)</h4>
-                        <div class="space-y-2">
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                            <span>🤖</span> 自动化配置
+                        </h4>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">启用自动复盘</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="systemConfig.auto_analysis_enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">智能调度 (Smart Schedule)</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="systemConfig.use_smart_schedule" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                                </label>
+                            </div>
+                            <div v-if="!systemConfig.use_smart_schedule" class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">固定间隔 (分钟)</span>
+                                <input type="number" v-model.number="systemConfig.fixed_interval_minutes" class="w-16 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. API Key Setting -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                            <span>🔑</span> API 设置
+                        </h4>
+                        <div class="space-y-2 pl-2">
                             <label class="block text-xs text-gray-500 dark:text-gray-400">DeepSeek API Key</label>
                             <input type="password" v-model="apiKey" @change="saveApiKey" placeholder="sk-..." 
                                    class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500">
                             <p class="text-[10px] text-gray-400">仅在本地独立运行时需要填写。服务器版本请忽略。</p>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-gray-700 dark:text-gray-300">科创板 (68)</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" v-model="filterSettings.showStar" class="sr-only peer" @change="saveFilterSettings">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                        </label>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-gray-700 dark:text-gray-300">北交所 (8/4/92)</span>
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" v-model="filterSettings.showBSE" class="sr-only peer" @change="saveFilterSettings">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                        </label>
-                    </div>
+                </div>
+
+                <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-b-lg flex justify-end gap-2">
+                    <button @click="showSettingsModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">取消</button>
+                    <button @click="saveConfig" class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors">保存设置</button>
                 </div>
             </div>
         </div>
@@ -895,7 +939,6 @@
                     showManualPanel: true,
                     isDark: true,
                     // Filter Settings
-                    showFilterModal: false,
                     filterSettings: {
                         showMainBoard: true,
                         showChiNext: true,
