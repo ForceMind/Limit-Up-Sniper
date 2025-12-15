@@ -956,6 +956,8 @@
                 limitUpStocks() {
                     return this.stocks
                         .filter(s => s.strategy === 'LimitUp' && this.checkBoardVisibility(s.code)) 
+                        // Hide if already limit up (sealed)
+                        .filter(s => !s.is_limit_up)
                         .map(stock => {
                             const momentumScore = stock.change_percent; 
                             const total = (stock.initial_score * 0.4) + (momentumScore * 0.6);
@@ -967,6 +969,8 @@
                 manualStocks() {
                     return this.stocks
                         .filter(s => s.strategy === 'Manual' && this.checkBoardVisibility(s.code))
+                        // Hide if already limit up (sealed)
+                        .filter(s => !s.is_limit_up)
                         .sort((a, b) => b.initial_score - a.initial_score);
                 },
                 // Discarded Stocks
@@ -1141,12 +1145,13 @@
                     if (!code) return;
                     
                     try {
-                        const response = await fetch(`/api/add_stock?code=${code}`, { method: 'POST' });
+                        // Use new API endpoint
+                        const response = await fetch(`/api/add_watchlist?code=${code}&name=手动添加`, { method: 'GET' });
                         const result = await response.json();
-                        if (result.status === 'success') {
+                        if (result.status === 'ok') {
                             await this.fetchData();
                         } else {
-                            alert('添加失败: ' + result.message);
+                            alert('添加失败: ' + result.msg);
                         }
                     } catch (error) {
                         alert('添加错误');
@@ -1444,6 +1449,10 @@
                 // Intelligent Polling
                 setInterval(() => {
                     const now = new Date();
+                    const day = now.getDay();
+                    // Weekend check (0=Sun, 6=Sat)
+                    if (day === 0 || day === 6) return;
+
                     const h = now.getHours();
                     const m = now.getMinutes();
                     const timeVal = h * 100 + m;
@@ -1454,12 +1463,15 @@
                         this.fetchData();
                     } else {
                         // Optional: fetch once every minute just in case
-                        if (now.getSeconds() < 5) this.fetchData();
+                        // if (now.getSeconds() < 5) this.fetchData();
                     }
                 }, 3000);
 
                 setInterval(() => {
                     const now = new Date();
+                    const day = now.getDay();
+                    if (day === 0 || day === 6) return;
+
                     const h = now.getHours();
                     const m = now.getMinutes();
                     const timeVal = h * 100 + m;
@@ -1469,7 +1481,7 @@
                     if (isTrading) {
                         this.fetchLimitUpPool();
                     } else {
-                        if (now.getSeconds() < 10) this.fetchLimitUpPool();
+                        // if (now.getSeconds() < 10) this.fetchLimitUpPool();
                     }
                 }, 10000);
 

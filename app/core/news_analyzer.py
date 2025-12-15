@@ -40,6 +40,22 @@ def get_market_data(logger=None):
             # 简单列出前 10 个
             top_stocks = pool[:10]
             market_summary += f"涨停代表: " + ", ".join([f"{s['name']}" for s in top_stocks]) + "\n"
+            
+            # 提取涨停概念 (简单统计)
+            concepts = {}
+            for s in pool:
+                c = s.get('concept', '')
+                if c:
+                    for part in c.split(','): # Assuming comma separated
+                        part = part.strip()
+                        if part:
+                            concepts[part] = concepts.get(part, 0) + 1
+            
+            # Top 3 concepts
+            sorted_concepts = sorted(concepts.items(), key=lambda x: x[1], reverse=True)[:3]
+            if sorted_concepts:
+                market_summary += f"热门概念: " + ", ".join([f"{k}({v})" for k, v in sorted_concepts]) + "\n"
+                
     except Exception as e:
         if logger: logger(f"[!] 获取涨停数据失败: {e}")
 
@@ -203,7 +219,7 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
 【评分标准 (Score 0-10)】
 请基于以下维度进行综合打分，不要随意给分：
 1. **新闻重磅度 (40%)**: 是否为国家级政策、行业重大突破或突发利好？(普通消息<6分, 重磅>8分)
-2. **题材主流度 (30%)**: 是否契合当前市场主线（如AI、低空经济等）？(非主线扣分)
+2. **题材主流度 (30%)**: 是否契合当前市场主线（如市场数据中提到的热门概念）？(非主线扣分)
 3. **个股辨识度 (30%)**: 是否为龙头、老妖股或近期人气股？(杂毛股扣分)
 注意：如果仅仅是普通利好且非主线，分数不应超过 7.0。只有绝对龙头或特大利好才能超过 9.0。
 
@@ -217,6 +233,12 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
       "reason": "结合今日表现(如3连板)和新闻利好的综合理由", 
       "score": 8.5, 
       "strategy": "Aggressive" 
+    }}
+  ],
+  "remove_stocks": [
+    {{
+      "code": "sh600xxx",
+      "reason": "利空消息或题材退潮"
     }}
   ]
 }}
@@ -258,13 +280,14 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
         content = re.sub(r'```\s*', '', content)
         
         data = json.loads(content)
-        return data.get("stocks", [])
+        # Return full data object to support 'remove_stocks'
+        return data
         
     except Exception as e:
         msg = f"[!] Analysis Failed: {e}"
         print(msg)
         if logger: logger(msg)
-        return []
+        return {}
 
 def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None):
     """
@@ -520,7 +543,29 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         # 只有第一批带上完整的 market_summary，避免重复消耗 token
         current_market_summary = market_summary if i == 0 else "（市场数据参考上文）"
         
-        analyzed_stocks = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger, mode=mode)
+        # AI Analysis returns a dict with 'stocks' and 'remove_stocks'
+        analysis_result = analyze_news_with_deepseek(batch, market_summary=current_market_summary, logger=logger, mode=mode)
+        
+        # Handle removals
+        if isinstance(analysis_result, dict):
+            remove_list = analysis_result.get('remove_stocks', [])
+            for item in remove_list:
+                code = item.get('code')
+                if not code: continue
+                # Fix code format
+                if not (code.startswith('sh') or code.startswith('sz') or code.startswith('bj')):
+                    if code.startswith('6'): code = 'sh' + code
+                    elif code.startswith('0') or code.startswith('3'): code = 'sz' + code
+                
+                if code in watchlist:
+                    reason = item.get('reason', 'AI建议剔除')
+                    if logger: logger(f"    [-] AI建议剔除: {watchlist[code]['name']} ({code}) - {reason}")
+                    del watchlist[code]
+
+            analyzed_stocks = analysis_result.get('stocks', [])
+        else:
+            # Fallback if AI returns list directly (old format compatibility)
+            analyzed_stocks = analysis_result if isinstance(analysis_result, list) else []
         
         for stock in analyzed_stocks:
             code = stock['code']

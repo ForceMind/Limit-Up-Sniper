@@ -1,5 +1,36 @@
 import json
+from datetime import datetime, time
 from app.core.data_provider import data_provider
+
+def is_trading_time():
+    """
+    Check if current time is within trading hours (9:15 - 15:00) on a weekday.
+    Simple check, does not account for public holidays.
+    """
+    now = datetime.now()
+    
+    # Check if weekend (Saturday=5, Sunday=6)
+    if now.weekday() >= 5:
+        return False
+        
+    current_time = now.time()
+    start_time = time(9, 15)
+    end_time = time(15, 5) # Allow 5 mins buffer
+    
+    # Lunch break check (11:30 - 13:00) - Optional, but good for reducing load
+    lunch_start = time(11, 35)
+    lunch_end = time(12, 55)
+    
+    if start_time <= current_time <= end_time:
+        if lunch_start <= current_time <= lunch_end:
+            return False
+        return True
+        
+    return False
+
+def is_market_open_day():
+    """Check if today is a potential trading day (Mon-Fri)."""
+    return datetime.now().weekday() < 5
 
 def fetch_history_data(code, days=300):
     """
