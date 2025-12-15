@@ -438,18 +438,30 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
         if not content:
             return []
         
-        # 清洗可能存在的 Markdown 标记
-        content = re.sub(r'```json\s*', '', content)
-        content = re.sub(r'```\s*', '', content)
-        
-        data = json.loads(content)
+        # 尝试提取 JSON 块
+        try:
+            # 1. 尝试直接解析
+            data = json.loads(content)
+        except:
+            # 2. 尝试提取 ```json ... ``` 或 ``` ... ```
+            match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            if match:
+                data = json.loads(match.group(1))
+            else:
+                # 3. 尝试寻找第一个 { 和最后一个 }
+                start = content.find('{')
+                end = content.rfind('}')
+                if start != -1 and end != -1:
+                    data = json.loads(content[start:end+1])
+                else:
+                    raise ValueError("No JSON object found")
         
         # Save to Cache
         ai_cache.set(cache_key, data)
         
         return data
     except Exception as e:
-        if logger: logger(f"[!] 解析AI结果失败: {e}")
+        if logger: logger(f"[!] 解析AI结果失败: {e}\nRaw Content: {content[:100]}...")
         return {}
 
 def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None):
