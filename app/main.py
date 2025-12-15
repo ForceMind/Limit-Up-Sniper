@@ -792,22 +792,38 @@ def get_stock_quotes():
         for stock in raw_stocks:
             code = stock['code']
             
-            # Priority: Favorites > Watchlist
-            if code in favorites_map:
-                strategy_info = favorites_map[code]
-                # Force Manual strategy for display
-                stock['strategy'] = 'Manual'
-            else:
-                strategy_info = watchlist_map.get(code, {})
-                stock['strategy'] = strategy_info.get("strategy_type", "Neutral")
+            stock['is_favorite'] = False
+            ai_strategy = "Neutral"
             
-            # Merge strategy info
-            stock['initial_score'] = strategy_info.get("initial_score", 0)
-            stock['concept'] = strategy_info.get("concept", "-")
-            stock['seal_rate'] = strategy_info.get("seal_rate", 0)
-            stock['broken_rate'] = strategy_info.get("broken_rate", 0)
-            stock['next_day_premium'] = strategy_info.get("next_day_premium", 0)
-            stock['limit_up_days'] = strategy_info.get("limit_up_days", 0)
+            # 1. Check AI Watchlist for strategy & info
+            if code in watchlist_map:
+                ai_info = watchlist_map[code]
+                ai_strategy = ai_info.get("strategy_type", "Neutral")
+                
+                # Use AI info as base
+                stock['initial_score'] = ai_info.get("initial_score", 0)
+                stock['concept'] = ai_info.get("concept", stock.get('concept', '-'))
+                stock['reason'] = ai_info.get("reason", stock.get('reason', ''))
+                stock['seal_rate'] = ai_info.get("seal_rate", 0)
+                stock['broken_rate'] = ai_info.get("broken_rate", 0)
+                stock['next_day_premium'] = ai_info.get("next_day_premium", 0)
+                stock['limit_up_days'] = ai_info.get("limit_up_days", 0)
+
+            # 2. Check Favorites
+            if code in favorites_map:
+                fav_info = favorites_map[code]
+                stock['is_favorite'] = True
+                
+                # If NOT in AI list, use Favorite info
+                if code not in watchlist_map:
+                    stock['concept'] = fav_info.get("concept", stock.get('concept', '-'))
+                    stock['reason'] = fav_info.get("reason", "手动添加")
+                    stock['initial_score'] = fav_info.get("initial_score", 0)
+                    # Keep other metrics 0 or default
+            
+            # Set strategy to AI strategy (so it appears in AI columns)
+            # Frontend will handle 'is_favorite' for Manual column
+            stock['strategy'] = ai_strategy
             
             enriched_stocks.append(stock)
             
@@ -823,17 +839,18 @@ async def remove_from_watchlist(request: Request):
     try:
         data = await request.json()
         code = data.get("code")
+        list_type = data.get("type", "all") # 'favorite', 'ai', or 'all' (default for backward compat)
         
         removed = False
         if code:
             # Remove from favorites
-            if code in favorites_map:
+            if (list_type == 'favorite' or list_type == 'all') and code in favorites_map:
                 favorites_data = [item for item in favorites_data if item['code'] != code]
                 save_favorites(favorites_data)
                 removed = True
                 
             # Remove from watchlist
-            if code in watchlist_map:
+            if (list_type == 'ai' or list_type == 'all') and code in watchlist_map:
                 watchlist_data = [item for item in watchlist_data if item['code'] != code]
                 save_watchlist(watchlist_data)
                 removed = True
