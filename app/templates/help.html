@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>涨停狙击手 - 使用帮助</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .prose h3 { margin-top: 1.5em; margin-bottom: 0.5em; font-weight: bold; color: #2563eb; }
+        .dark .prose h3 { color: #60a5fa; }
+        .prose p { margin-bottom: 1em; line-height: 1.6; }
+        .prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .prose li { margin-bottom: 0.5em; }
+        .feature-card { @apply bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700; }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen p-4 md:p-8 transition-colors duration-300">
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 border-b border-gray-200 dark:border-gray-700 pb-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-red-600 dark:text-red-500 flex items-center gap-3">
+                    <span class="text-4xl">🎯</span> 涨停狙击手 (Limit-Up Sniper)
+                </h1>
+                <p class="text-gray-500 dark:text-gray-400 mt-2">新一代 AI 驱动的超短线辅助决策系统</p>
+            </div>
+            <button onclick="toggleTheme()" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                <span id="theme-icon">🌞</span>
+            </button>
+        </header>
+
+        <main class="space-y-8">
+            <!-- 1. 核心功能概览 -->
+            <section>
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>🚀</span> 核心功能模块
+                </h2>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="feature-card">
+                        <h3 class="text-xl font-bold text-purple-600 dark:text-purple-400 mb-2">🎯 竞价抢筹 (Aggressive)</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300">
+                            <strong>适用场景：</strong> 每日 09:25 - 09:30<br>
+                            <strong>功能说明：</strong> 系统会在集合竞价结束后，自动扫描全市场，筛选出具有“弱转强”、“高开秒板”潜力的个股。
+                        </p>
+                        <ul class="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                            <li>重点关注：昨日涨停、今日高开、竞价量能爆棚的标的。</li>
+                            <li>AI 角色：顶级游资，专注于博弈开盘溢价。</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3 class="text-xl font-bold text-red-600 dark:text-red-400 mb-2">🚀 盘中打板 (Intraday)</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300">
+                            <strong>适用场景：</strong> 每日 09:30 - 15:00<br>
+                            <strong>功能说明：</strong> 实时监控全市场异动，捕捉即将涨停或刚刚涨停的股票。
+                        </p>
+                        <ul class="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                            <li><strong>涨速：</strong> 监控短时间内快速拉升的个股。</li>
+                            <li><strong>AI 角色：</strong> 打板客，专注于封板质量和连板接力。</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3 class="text-xl font-bold text-yellow-600 dark:text-yellow-400 mb-2">🔥 涨停池 & 炸板池</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300">
+                            <strong>适用场景：</strong> 全天候复盘<br>
+                            <strong>功能说明：</strong> 
+                        </p>
+                        <ul class="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                            <li><strong>涨停池：</strong> 今日所有封死涨停的股票，按时间排序。</li>
+                            <li><strong>炸板池：</strong> 曾经涨停但后来打开的股票，用于观察市场亏钱效应。</li>
+                        </ul>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3 class="text-xl font-bold text-blue-600 dark:text-blue-400 mb-2">📝 自选个股 (Manual)</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-300">
+                            <strong>适用场景：</strong> 个人跟踪<br>
+                            <strong>功能说明：</strong> 您可以手动添加感兴趣的股票进行长期跟踪。
+                        </p>
+                        <ul class="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                            <li>支持搜索添加（代码或拼音）。</li>
+                            <li><strong>AI 角色：</strong> 价值/波段交易者，专注于基本面和趋势分析。</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. AI 分析说明 -->
+            <section class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>🤖</span> AI 深度分析使用指南
+                </h2>
+                <div class="prose dark:prose-invert max-w-none text-sm">
+                    <p>
+                        本系统集成了 DeepSeek 大模型，针对不同的股票列表，AI 会自动切换不同的“分析师人格”：
+                    </p>
+                    <div class="grid md:grid-cols-3 gap-4 my-4">
+                        <div class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-100 dark:border-purple-800">
+                            <div class="font-bold text-purple-600 dark:text-purple-400">竞价列表</div>
+                            <div class="text-xs mt-1">AI 侧重分析<strong>情绪博弈</strong>、<strong>预期差</strong>和<strong>竞价抢筹逻辑</strong>。</div>
+                        </div>
+                        <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded border border-red-100 dark:border-red-800">
+                            <div class="font-bold text-red-600 dark:text-red-400">盘中/涨停列表</div>
+                            <div class="text-xs mt-1">AI 侧重分析<strong>封板质量</strong>、<strong>板块地位</strong>和<strong>明日接力策略</strong>。</div>
+                        </div>
+                        <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-100 dark:border-blue-800">
+                            <div class="font-bold text-blue-600 dark:text-blue-400">自选列表</div>
+                            <div class="text-xs mt-1">AI 侧重分析<strong>基本面</strong>、<strong>技术趋势</strong>和<strong>中线价值</strong>。</div>
+                        </div>
+                    </div>
+                    <p>
+                        <strong>如何使用：</strong> 点击任意股票卡片上的 <span class="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded text-xs">🤖</span> 按钮即可触发分析。分析结果会自动缓存 10 分钟，避免重复消耗 Token。
+                    </p>
+                </div>
+            </section>
+
+            <!-- 3. 常见指标释义 -->
+            <section class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>📊</span> 常见指标释义
+                </h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                        <div class="font-bold text-gray-700 dark:text-gray-300">晋级率</div>
+                        <div class="text-gray-500 dark:text-gray-400 text-xs mt-1">昨日涨停的股票，今日继续涨停的概率。反映接力情绪。</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-700 dark:text-gray-300">首炸率</div>
+                        <div class="text-gray-500 dark:text-gray-400 text-xs mt-1">首次封板后炸开的概率。数值越低，封板越稳。</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-700 dark:text-gray-300">溢价率</div>
+                        <div class="text-gray-500 dark:text-gray-400 text-xs mt-1">昨日打板今日的平均高开幅度。反映赚钱效应。</div>
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-700 dark:text-gray-300">连板高度</div>
+                        <div class="text-gray-500 dark:text-gray-400 text-xs mt-1">当前市场最高的连续涨停板数。反映市场空间。</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="mt-12 text-center text-gray-400 text-sm pb-8">
+            &copy; 2025 Limit-Up Sniper. All rights reserved.
+        </footer>
+    </div>
+
+    <script>
+        // Theme Logic
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+                document.getElementById('theme-icon').innerText = '🌙';
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+                document.getElementById('theme-icon').innerText = '🌞';
+            }
+        }
+
+        // Init Theme
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+            document.getElementById('theme-icon').innerText = '🌞';
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.getElementById('theme-icon').innerText = '🌙';
+        }
+    </script>
+</body>
+</html>

@@ -965,4 +965,8 @@ async def api_analyze_stock(request: StockAnalysisRequest):
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/help", response_class=HTMLResponse)
+async def read_help(request: Request):
+    return templates.TemplateResponse("help.html", {"request": request})
+
 # Trigger reload for metrics update
