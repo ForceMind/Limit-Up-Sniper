@@ -530,13 +530,24 @@ async def run_initial_scan():
         print(f"Startup scan error: {e}")
 
 # Global Configuration
+DEFAULT_SCHEDULE = [
+    {"start": "09:30", "end": "15:00", "interval": 15, "mode": "intraday", "desc": "盘中交易"},
+    {"start": "15:00", "end": "15:15", "interval": 9999, "mode": "none", "desc": "收盘等待"},
+    {"start": "15:15", "end": "18:00", "interval": 60, "mode": "after_hours", "desc": "盘后复盘"},
+    {"start": "18:00", "end": "23:00", "interval": 180, "mode": "after_hours", "desc": "晚间复盘"},
+    {"start": "23:00", "end": "06:00", "interval": 360, "mode": "after_hours", "desc": "夜间休眠"},
+    {"start": "06:00", "end": "08:30", "interval": 60, "mode": "after_hours", "desc": "早间复盘"},
+    {"start": "08:30", "end": "09:30", "interval": 15, "mode": "after_hours", "desc": "盘前准备"}
+]
+
 SYSTEM_CONFIG = {
     "auto_analysis_enabled": True,
     "use_smart_schedule": True,
     "fixed_interval_minutes": 60,
     "last_run_time": 0,
     "next_run_time": 0,
-    "current_status": "Idle"
+    "current_status": "Idle",
+    "schedule_plan": DEFAULT_SCHEDULE
 }
 
 def load_config():
@@ -548,7 +559,7 @@ def load_config():
             with open(config_path, "r", encoding="utf-8") as f:
                 saved_config = json.load(f)
                 # Update only persistent fields
-                for key in ["auto_analysis_enabled", "use_smart_schedule", "fixed_interval_minutes"]:
+                for key in ["auto_analysis_enabled", "use_smart_schedule", "fixed_interval_minutes", "schedule_plan"]:
                     if key in saved_config:
                         SYSTEM_CONFIG[key] = saved_config[key]
         except Exception as e:
@@ -562,8 +573,9 @@ def save_config():
             json.dump({
                 "auto_analysis_enabled": SYSTEM_CONFIG["auto_analysis_enabled"],
                 "use_smart_schedule": SYSTEM_CONFIG["use_smart_schedule"],
-                "fixed_interval_minutes": SYSTEM_CONFIG["fixed_interval_minutes"]
-            }, f, indent=2)
+                "fixed_interval_minutes": SYSTEM_CONFIG["fixed_interval_minutes"],
+                "schedule_plan": SYSTEM_CONFIG.get("schedule_plan", DEFAULT_SCHEDULE)
+            }, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Failed to save config: {e}")
 
@@ -578,6 +590,7 @@ class ConfigUpdate(BaseModel):
     auto_analysis_enabled: bool
     use_smart_schedule: bool
     fixed_interval_minutes: int
+    schedule_plan: Optional[List[dict]] = None
 
 @app.post("/api/config")
 async def update_config(config: ConfigUpdate):
@@ -585,6 +598,8 @@ async def update_config(config: ConfigUpdate):
     SYSTEM_CONFIG["auto_analysis_enabled"] = config.auto_analysis_enabled
     SYSTEM_CONFIG["use_smart_schedule"] = config.use_smart_schedule
     SYSTEM_CONFIG["fixed_interval_minutes"] = config.fixed_interval_minutes
+    if config.schedule_plan:
+        SYSTEM_CONFIG["schedule_plan"] = config.schedule_plan
     save_config() # Persist changes
     return {"status": "success", "config": SYSTEM_CONFIG}
 
@@ -624,57 +639,37 @@ async def scheduler_loop():
         mode = "after_hours"
         
         if SYSTEM_CONFIG["use_smart_schedule"]:
-            # 09:30 - 15:00 (Trading) - Intraday Surprise
-            if is_trading_time():
-                interval_seconds = 15 * 60 # 15 mins
-                lookback_hours = 0.25
-                mode = "intraday"
+            current_time_str = now.strftime("%H:%M")
+            matched_rule = None
+            
+            # Default fallback
+            interval_seconds = 3600
+            mode = "after_hours"
+
+            for rule in SYSTEM_CONFIG.get("schedule_plan", DEFAULT_SCHEDULE):
+                start = rule["start"]
+                end = rule["end"]
                 
-            # 15:00 - 15:15 (Wait)
-            elif current_hour == 15 and current_minute < 15:
-                interval_seconds = 999999 # Do not run
-                
-            # 15:15 - 18:00 (Post-market 1h)
-            elif current_hour == 15 and current_minute >= 15:
-                 interval_seconds = 3600
-                 lookback_hours = 1
-                 mode = "after_hours"
-            elif 16 <= current_hour < 18:
-                 interval_seconds = 3600
-                 lookback_hours = 1
-                 mode = "after_hours"
-                 
-            # 18:00 - 23:00 (Evening 3h)
-            elif 18 <= current_hour < 23:
-                 interval_seconds = 3 * 3600
-                 lookback_hours = 3
-                 mode = "after_hours"
-                 
-            # 23:00 - 06:00 (Night 6h)
-            elif current_hour >= 23 or current_hour < 6:
-                 interval_seconds = 6 * 3600
-                 lookback_hours = 6
-                 mode = "after_hours"
-                 
-            # 06:00 - 08:30 (Morning 1h)
-            elif 6 <= current_hour < 8:
-                 interval_seconds = 3600
-                 lookback_hours = 1
-                 mode = "after_hours"
-            elif current_hour == 8 and current_minute < 30:
-                 interval_seconds = 3600
-                 lookback_hours = 1
-                 mode = "after_hours"
-                 
-            # 08:30 - 09:30 (Pre-open 15m)
-            elif current_hour == 8 and current_minute >= 30:
-                 interval_seconds = 15 * 60
-                 lookback_hours = 0.25
-                 mode = "after_hours"
-            elif current_hour == 9 and current_minute < 30:
-                 interval_seconds = 15 * 60
-                 lookback_hours = 0.25
-                 mode = "after_hours"
+                # Check if time is in range
+                in_range = False
+                if start <= end:
+                    if start <= current_time_str < end:
+                        in_range = True
+                else: # Cross midnight (e.g. 23:00 to 06:00)
+                    if start <= current_time_str or current_time_str < end:
+                        in_range = True
+                        
+                if in_range:
+                    matched_rule = rule
+                    break
+            
+            if matched_rule:
+                interval_seconds = matched_rule["interval"] * 60
+                mode = matched_rule["mode"]
+                if matched_rule["mode"] == "none":
+                     interval_seconds = 999999
+            
+            lookback_hours = max(0.25, interval_seconds / 3600)
 
             # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
             if current_hour == 15 and current_minute >= 15:
