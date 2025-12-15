@@ -715,7 +715,7 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         # [新增] 立即保存并通知前端，实现"先加列表，再丰富数据"
         try:
             temp_list = list(watchlist.values())
-            temp_list.sort(key=lambda x: x['initial_score'], reverse=True)
+            temp_list.sort(key=lambda x: x.get('initial_score', 0), reverse=True)
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(temp_list, f, ensure_ascii=False, indent=2)
             
@@ -804,7 +804,7 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             }
             
             # 如果已存在，且新分数更高，则覆盖；否则保留旧的但更新指标
-            if code not in watchlist or current_score > watchlist[code]['initial_score']:
+            if code not in watchlist or current_score > watchlist[code].get('initial_score', 0):
                 watchlist[code] = new_item
             else:
                 # 仅更新指标和新闻（如果需要）
@@ -863,7 +863,7 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         current_watchlist[code] = item
         
     final_list = list(current_watchlist.values())
-    final_list.sort(key=lambda x: x['initial_score'], reverse=True)
+    final_list.sort(key=lambda x: x.get('initial_score', 0), reverse=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, ensure_ascii=False, indent=2)
