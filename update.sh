@@ -18,6 +18,15 @@ fi
 
 # 2. 拉取最新代码
 echo -e "${YELLOW}[1/3] 拉取最新代码...${NC}"
+
+# 备份本地数据 (防止 git reset 误删)
+BACKUP_DIR="._data_backup"
+if [ -d "data" ]; then
+    echo -e "${YELLOW}正在备份 data 目录...${NC}"
+    rm -rf "$BACKUP_DIR"
+    cp -r data "$BACKUP_DIR"
+fi
+
 git config --global --add safe.directory $(pwd)
 git pull
 if [ $? -ne 0 ]; then
@@ -28,8 +37,19 @@ if [ $? -ne 0 ]; then
         git reset --hard origin/main
     else
         echo "更新取消。"
+        if [ -d "$BACKUP_DIR" ]; then
+            rm -rf "$BACKUP_DIR"
+        fi
         exit 1
     fi
+fi
+
+# 恢复本地数据
+if [ -d "$BACKUP_DIR" ]; then
+    echo -e "${YELLOW}正在恢复 data 目录...${NC}"
+    mkdir -p data
+    cp -r "$BACKUP_DIR"/* data/
+    rm -rf "$BACKUP_DIR"
 fi
 
 # 3. 更新依赖
