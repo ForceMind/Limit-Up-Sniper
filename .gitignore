@@ -8,3 +8,5 @@ build/
 .vscode/
 venv/
 .env
+ai_cache.json
+analysis_cache.json
