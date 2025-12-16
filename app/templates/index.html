@@ -1373,7 +1373,7 @@
                     
                     // Set analyzing flag
                     if (!this.analyzingStocks) this.analyzingStocks = {};
-                    this.$set(this.analyzingStocks, stock.code, true);
+                    this.analyzingStocks[stock.code] = true;
                     
                     try {
                         const payload = {
@@ -1421,7 +1421,7 @@
                         }
                     } finally {
                         // Clear analyzing flag
-                        this.$set(this.analyzingStocks, stock.code, false);
+                        if (this.analyzingStocks) this.analyzingStocks[stock.code] = false;
                         
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisLoading = false;
@@ -1445,7 +1445,7 @@
                     
                     // Set analyzing flag
                     if (!this.analyzingStocks) this.analyzingStocks = {};
-                    this.$set(this.analyzingStocks, stock.code, true);
+                    this.analyzingStocks[stock.code] = true;
 
                     try {
                         const payload = {
@@ -1492,7 +1492,7 @@
                         }
                     } finally {
                         // Clear analyzing flag
-                        this.$set(this.analyzingStocks, stock.code, false);
+                        if (this.analyzingStocks) this.analyzingStocks[stock.code] = false;
 
                         if (this.currentAnalysisStock.code === stock.code) {
                             this.analysisLoading = false;
