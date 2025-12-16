@@ -28,20 +28,17 @@ if [ -d "data" ]; then
 fi
 
 git config --global --add safe.directory $(pwd)
-git pull
-if [ $? -ne 0 ]; then
-    echo -e "${YELLOW}Git pull 失败，尝试强制重置 (git reset --hard)...${NC}"
-    read -p "是否丢弃本地修改并强制更新? (y/n): " CONFIRM
-    if [ "$CONFIRM" == "y" ]; then
-        git fetch --all
-        git reset --hard origin/main
-    else
-        echo "更新取消。"
-        if [ -d "$BACKUP_DIR" ]; then
-            rm -rf "$BACKUP_DIR"
-        fi
-        exit 1
-    fi
+# 使用 if ! 命令; then 的方式，即使开启了 set -e 也不会导致脚本崩溃
+if ! git pull; then
+    echo -e "${YELLOW}Git pull 失败，自动执行强制重置 (git reset --hard)...${NC}"
+    
+    # 获取当前分支名称 (比写死 main 更安全，防止你在 dev 分支时切回 main)
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    
+    git fetch --all
+    git reset --hard "origin/$CURRENT_BRANCH"
+else
+    echo -e "${GREEN}Git pull 成功。${NC}"
 fi
 
 # 恢复本地数据
