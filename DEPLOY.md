@@ -69,7 +69,9 @@ cd Limit-Up-Sniper
 
 ```bash
 cd limit-up-sniper
+sudo systemctl stop limit-up-sniper
 sudo bash update.sh
+sudo journalctl -u limit-up-sniper -f
 ```
 
 ---
