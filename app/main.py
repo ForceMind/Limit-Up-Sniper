@@ -434,10 +434,22 @@ async def add_stock(code: str):
         "seal_rate": metrics['seal_rate'],
         "broken_rate": metrics['broken_rate'],
         "next_day_premium": metrics['next_day_premium'],
-        "limit_up_days": metrics['limit_up_days']
+        "limit_up_days": metrics['limit_up_days'],
+        "added_time": time.time() # Record add time for sorting
     }
     
-    watchlist_data.append(new_item)
+    # Check if exists to update instead of append (though we handled map above, list needs care)
+    existing_idx = -1
+    for i, item in enumerate(watchlist_data):
+        if item['code'] == code:
+            existing_idx = i
+            break
+            
+    if existing_idx >= 0:
+        watchlist_data[existing_idx] = new_item
+    else:
+        watchlist_data.insert(0, new_item) # Prepend to list
+        
     watchlist_map[code] = new_item
     if code not in WATCH_LIST:
         WATCH_LIST.append(code)
@@ -600,6 +612,11 @@ async def update_config(config: ConfigUpdate):
     SYSTEM_CONFIG["fixed_interval_minutes"] = config.fixed_interval_minutes
     if config.schedule_plan:
         SYSTEM_CONFIG["schedule_plan"] = config.schedule_plan
+    
+    # [Fix] Reset last_run_time to now to prevent immediate scan if interval was reduced
+    # This ensures the next scan happens AFTER the interval, not immediately.
+    SYSTEM_CONFIG["last_run_time"] = time.time()
+    
     save_config() # Persist changes
     return {"status": "success", "config": SYSTEM_CONFIG}
 
@@ -805,6 +822,7 @@ def get_stock_quotes():
                 stock['broken_rate'] = ai_info.get("broken_rate", 0)
                 stock['next_day_premium'] = ai_info.get("next_day_premium", 0)
                 stock['limit_up_days'] = ai_info.get("limit_up_days", 0)
+                stock['added_time'] = ai_info.get("added_time", 0)
 
             # 2. Check Favorites
             if code in favorites_map:
@@ -816,6 +834,7 @@ def get_stock_quotes():
                     stock['concept'] = fav_info.get("concept", stock.get('concept', '-'))
                     stock['reason'] = fav_info.get("reason", "手动添加")
                     stock['initial_score'] = fav_info.get("initial_score", 0)
+                    stock['added_time'] = fav_info.get("added_time", 0)
                     # Keep other metrics 0 or default
             
             # Set strategy to AI strategy (so it appears in AI columns)

@@ -725,19 +725,32 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 for item in existing_data:
                     watchlist[item['code']] = item
                     initial_codes.add(item['code'])
-        except:
+        except Exception as e:
+            msg = f"[!] Failed to load existing watchlist: {e}"
+            print(msg)
+            if logger: logger(msg)
+            # If we can't load the existing list, we risk overwriting it with empty data.
+            # Better to abort or proceed with caution.
+            # For now, we'll assume it's empty but log error.
             pass
 
     # 2. 如果是盘中模式，进行行情扫描并更新/剔除
     if mode == "intraday":
         intraday_stocks, sealed_stocks = scan_intraday_limit_up(logger=logger)
-        # 合并两者用于判断是否仍在活跃池
-        scanner_stocks = intraday_stocks + sealed_stocks
-        scanner_codes = set(s['code'] for s in scanner_stocks)
-        sealed_codes = set(s['code'] for s in sealed_stocks)
         
-        # 2.1 标记不再满足条件的股票为 Discarded
-        for code, item in watchlist.items():
+        # [Fix] If scan returns empty (e.g. network error), do NOT clear existing data
+        if not intraday_stocks and not sealed_stocks:
+            msg = "[!] Intraday scan returned no results. Skipping update to prevent clearing watchlist."
+            print(msg)
+            if logger: logger(msg)
+        else:
+            # 合并两者用于判断是否仍在活跃池
+            scanner_stocks = intraday_stocks + sealed_stocks
+            scanner_codes = set(s['code'] for s in scanner_stocks)
+            sealed_codes = set(s['code'] for s in sealed_stocks)
+            
+            # 2.1 标记不再满足条件的股票为 Discarded
+            for code, item in watchlist.items():
             # 只处理之前是由盘中突击策略加入的股票
             # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
             if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
@@ -753,18 +766,18 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                     if '已封板' not in item['news_summary']:
                         item['news_summary'] = f"[已封板] {item['news_summary']}"
         
-        # 2.2 添加/更新当前扫描到的股票
-        for stock in scanner_stocks:
-            code = stock['code']
-            # 计算指标
-            metrics = calculate_metrics(code)
-            
-            # 如果是 sealed，在 reason 前加标记
-            reason = stock['reason']
-            if code in sealed_codes and '已封板' not in reason:
-                reason = f"[已封板] {reason}"
-            
-            new_item = {
+            # 2.2 添加/更新当前扫描到的股票
+            for stock in scanner_stocks:
+                code = stock['code']
+                # 计算指标
+                metrics = calculate_metrics(code)
+                
+                # 如果是 sealed，在 reason 前加标记
+                reason = stock['reason']
+                if code in sealed_codes and '已封板' not in reason:
+                    reason = f"[已封板] {reason}"
+                
+                new_item = {
                 "code": code,
                 "name": stock['name'],
                 "news_summary": reason,
@@ -775,25 +788,25 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 "broken_rate": metrics['broken_rate'],
                 "next_day_premium": metrics['next_day_premium'],
                 "limit_up_days": metrics['limit_up_days']
-            }
-            # 覆盖旧数据 (包括之前可能被标记为 Discarded 的，如果又满足条件了就复活)
-            watchlist[code] = new_item
+                }
+                # 覆盖旧数据 (包括之前可能被标记为 Discarded 的，如果又满足条件了就复活)
+                watchlist[code] = new_item
             
-        # [新增] 立即保存并通知前端，实现"先加列表，再丰富数据"
-        try:
-            temp_list = list(watchlist.values())
-            temp_list.sort(key=lambda x: x.get('initial_score', 0), reverse=True)
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(temp_list, f, ensure_ascii=False, indent=2)
-            
-            if update_callback:
-                update_callback()
+            # [新增] 立即保存并通知前端，实现"先加列表，再丰富数据"
+            try:
+                temp_list = list(watchlist.values())
+                temp_list.sort(key=lambda x: x.get('initial_score', 0), reverse=True)
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(temp_list, f, ensure_ascii=False, indent=2)
                 
-            msg = f"[-] 盘中扫描完成，已更新 {len(scanner_stocks)} 只候选股，开始AI分析..."
-            print(msg)
-            if logger: logger(msg)
-        except Exception as e:
-            print(f"Error saving intermediate watchlist: {e}")
+                if update_callback:
+                    update_callback()
+                    
+                msg = f"[-] 盘中扫描完成，已更新 {len(scanner_stocks)} 只候选股，开始AI分析..."
+                print(msg)
+                if logger: logger(msg)
+            except Exception as e:
+                print(f"Error saving intermediate watchlist: {e}")
             
     # 如果没有新闻，也至少跑一次市场数据分析
     if not news_items:
@@ -822,7 +835,9 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 if code in watchlist:
                     reason = item.get('reason', 'AI建议剔除')
                     if logger: logger(f"    [-] AI建议剔除: {watchlist[code]['name']} ({code}) - {reason}")
-                    del watchlist[code]
+                    # Don't delete, just mark as Discarded so user can see it
+                    watchlist[code]['strategy_type'] = 'Discarded'
+                    watchlist[code]['news_summary'] = f"[AI剔除] {reason}"
 
             analyzed_stocks = analysis_result.get('stocks', [])
         else:
@@ -924,13 +939,37 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             pass
             
     # 合并本次分析结果
-    # 如果代码在本次分析结果中，使用本次结果(包含最新分析)
-    # 如果代码不在本次结果中但在文件中(例如手动添加)，保留它
     for code, item in watchlist.items():
+        # Preserve added_time if exists in current_watchlist but not in new item (shouldn't happen if we loaded it)
+        if code in current_watchlist and 'added_time' in current_watchlist[code]:
+            item['added_time'] = current_watchlist[code]['added_time']
         current_watchlist[code] = item
         
     final_list = list(current_watchlist.values())
-    final_list.sort(key=lambda x: x.get('initial_score', 0), reverse=True)
+    
+    # [Request 4] Batch fetch turnover for all stocks
+    try:
+        from app.core.data_provider import data_provider
+        codes_to_fetch = [item['code'] for item in final_list]
+        if codes_to_fetch:
+            quotes = data_provider.fetch_quotes(codes_to_fetch)
+            quote_map = {q['code']: q for q in quotes}
+            for item in final_list:
+                code = item['code']
+                if code in quote_map:
+                    item['turnover'] = quote_map[code].get('turnover', 0)
+    except Exception as e:
+        if logger: logger(f"[!] Failed to update turnover: {e}")
+
+    # [Request 1] Sort: Manual (Newest First) > AI (Score Desc)
+    def sort_key(item):
+        is_manual = 1 if item.get('strategy_type') == 'Manual' else 0
+        added_time = item.get('added_time', 0)
+        score = item.get('initial_score', 0)
+        # Tuple comparison: (is_manual desc, added_time desc, score desc)
+        return (is_manual, added_time, score)
+
+    final_list.sort(key=sort_key, reverse=True)
     
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(final_list, f, ensure_ascii=False, indent=2)

@@ -127,11 +127,15 @@ class DataProvider:
                         if ask1_vol == 0:
                             is_sealed = True
                     
-                    # Calculate CircMV
+                    # Calculate CircMV and Turnover
                     circ_mv = 0
+                    turnover = 0.0
                     circ_shares = base_map.get(code, 0)
+                    volume = float(data[8]) # Volume in shares
+                    
                     if circ_shares > 0:
                         circ_mv = circ_shares * current
+                        turnover = (volume / circ_shares) * 100
                     
                     stocks.append({
                         "code": code,
@@ -141,12 +145,12 @@ class DataProvider:
                         "high": float(data[4]),
                         "open": float(data[1]),
                         "prev_close": prev_close,
-                        "turnover": 0.0, 
+                        "turnover": round(turnover, 2), 
                         "limit_up_price": limit_up_price,
                         "is_limit_up": is_sealed, # Use strict check
                         "ask1_vol": ask1_vol,
                         "bid1_price": bid1_price,
-                        "circ_mv": circ_mv # Added CircMV
+                        "circulation_value": circ_mv # Use standard key
                     })
             except Exception as e:
                 self.log(f"[!] Batch fetch failed: {e}")
@@ -288,7 +292,13 @@ class DataProvider:
                 current = float(data[3])
                 prev_close = float(data[2])
                 amount = float(data[9])
-                change = ((current - prev_close) / prev_close) * 100 if prev_close > 0 else 0
+                
+                # Fix: If current is 0 (before open), use prev_close
+                if current == 0:
+                    current = prev_close
+                    change = 0.0
+                else:
+                    change = ((current - prev_close) / prev_close) * 100 if prev_close > 0 else 0
                 
                 indices.append({
                     "name": name,
@@ -380,12 +390,20 @@ class DataProvider:
             market = '1' if code.startswith('sh') else '0'
             secid = f"{market}.{raw_code}"
                 
-            em_url = f"http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f14,f127"
+            em_url = f"http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f14,f127,f116"
             resp = requests.get(em_url, timeout=3)
             em_data = resp.json()
             if em_data and em_data.get('data'):
                 name = em_data['data'].get('f14', name)
-                concept = em_data['data'].get('f127', concept)
+                concept = em_data['data'].get('f127', "")
+                industry = em_data['data'].get('f116', "")
+                
+                if not concept and industry:
+                    concept = industry
+                elif concept and industry:
+                    concept = f"{industry} | {concept}"
+                elif not concept and not industry:
+                    concept = "自选"
         except Exception as e:
             self.log(f"[!] Get stock info error: {e}")
             
