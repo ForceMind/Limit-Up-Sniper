@@ -751,15 +751,15 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             
             # 2.1 标记不再满足条件的股票为 Discarded
             for code, item in watchlist.items():
-            # 只处理之前是由盘中突击策略加入的股票
-            # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
-            if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
-                if code not in scanner_codes:
-                    # 不在最新的扫描结果中，说明条件已变差(或已涨停但未被识别为sealed?)
-                    # 标记为 Discarded，前端根据此状态显示在剔除区
-                    item['strategy_type'] = 'Discarded'
-                    if '已剔除' not in item['news_summary']:
-                        item['news_summary'] += " (已剔除)"
+                # 只处理之前是由盘中突击策略加入的股票
+                # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
+                if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
+                    if code not in scanner_codes:
+                        # 不在最新的扫描结果中，说明条件已变差(或已涨停但未被识别为sealed?)
+                        # 标记为 Discarded，前端根据此状态显示在剔除区
+                        item['strategy_type'] = 'Discarded'
+                        if '已剔除' not in item['news_summary']:
+                            item['news_summary'] += " (已剔除)"
                 elif code in sealed_codes:
                     # 如果在 sealed_stocks 中，更新状态为 Sealed (或者在 news_summary 中注明)
                     # 这样用户知道它已经封板了
