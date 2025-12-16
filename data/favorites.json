@@ -1,0 +1,20 @@
+[
+  {
+    "code": "sz002432",
+    "name": "手动添加",
+    "reason": "手动添加",
+    "strategy_type": "Manual",
+    "added_at": "2025-12-15 13:37:59",
+    "concept": "AI制药+全球健康",
+    "initial_score": 7.5
+  },
+  {
+    "code": "sh603601",
+    "name": "手动添加",
+    "reason": "手动添加",
+    "strategy_type": "Manual",
+    "added_at": "2025-12-15 13:25:02",
+    "concept": "商业航天",
+    "initial_score": 8.8
+  }
+]

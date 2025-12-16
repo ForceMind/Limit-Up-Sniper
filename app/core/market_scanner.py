@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime
 from app.core.data_provider import data_provider
+from app.core.seat_matcher import matcher
 
 # 临时过滤北证股票 (8开头, 4开头, 92开头)
 FILTER_BSE = False
@@ -46,6 +47,7 @@ def scan_intraday_limit_up(logger=None):
                 speed = round(float(row.get('speed', 0)), 2)
                 turnover = round(float(row.get('turnover', 0)), 2)
                 circ_mv = round(float(row.get('circ_mv', 0)), 2)
+                volume = float(row.get('volume', 0))
                 change_percent = round(change_percent, 2)
                 current = round(current, 2)
                 
@@ -82,6 +84,7 @@ def scan_intraday_limit_up(logger=None):
                     "speed": speed,
                     "turnover": turnover,
                     "circ_mv": circ_mv,
+                    "volume": volume,
                     "limit_up_price": limit_up_price
                 })
                     
@@ -136,6 +139,19 @@ def scan_intraday_limit_up(logger=None):
                 "turnover": cand['turnover']
             })
         else:
+            # 游资画像匹配
+            likely_seats = []
+            if cand['speed'] > 3.0:
+                stock_data_for_matcher = {
+                    'time': datetime.now(),
+                    'price_history': [], 
+                    'volume': cand.get('volume', 0),
+                    'avg_volume': cand.get('volume', 1), # Placeholder
+                    'market_cap': cand.get('circ_mv', 0),
+                    'limit_up_days': 1 
+                }
+                likely_seats = matcher.match(stock_data_for_matcher)
+
             intraday_stocks.append({
                 "code": full_code,
                 "name": cand['name'],
@@ -144,7 +160,8 @@ def scan_intraday_limit_up(logger=None):
                 "score": 8.0 + (cand['speed'] * 0.5),
                 "strategy": "LimitUp",
                 "circulation_value": cand['circ_mv'],
-                "turnover": cand['turnover']
+                "turnover": cand['turnover'],
+                "likely_seats": likely_seats
             })
             
             if logger and cand['speed'] > 1.0: 

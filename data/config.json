@@ -1,0 +1,5 @@
+{
+  "auto_analysis_enabled": false,
+  "use_smart_schedule": true,
+  "fixed_interval_minutes": 60
+}

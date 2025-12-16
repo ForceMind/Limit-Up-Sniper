@@ -15,6 +15,7 @@ from app.core.news_analyzer import generate_watchlist, analyze_single_stock
 from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
 from app.core.stock_utils import calculate_metrics, is_trading_time, is_market_open_day
 from app.core.data_provider import data_provider
+from app.core.lhb_manager import lhb_manager
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -824,6 +825,21 @@ def get_stock_quotes():
                 stock['limit_up_days'] = ai_info.get("limit_up_days", 0)
                 stock['added_time'] = ai_info.get("added_time", 0)
 
+                # Check for "Resurrection" (Weak to Strong)
+                if ai_strategy == "Discarded":
+                    # Determine limit threshold (10% or 20%)
+                    clean_code = code.replace('sz', '').replace('sh', '')
+                    is_20cm = clean_code.startswith('30') or clean_code.startswith('68')
+                    limit_threshold = 19.5 if is_20cm else 9.5
+                    
+                    current_change = stock.get('change_percent', 0)
+                    
+                    if current_change >= limit_threshold:
+                        ai_strategy = "LimitUp" # Promote to LimitUp view
+                        # Prepend reason if not already there
+                        if "[弱转强]" not in stock['reason']:
+                            stock['reason'] = f"[弱转强] {stock['reason']}"
+
             # 2. Check Favorites
             if code in favorites_map:
                 fav_info = favorites_map[code]
@@ -982,5 +998,55 @@ async def read_root(request: Request):
 @app.get("/help", response_class=HTMLResponse)
 async def read_help(request: Request):
     return templates.TemplateResponse("help.html", {"request": request})
+
+# --- LHB API ---
+class LHBConfigRequest(BaseModel):
+    enabled: bool
+    days: int
+    min_amount: int
+
+@app.get("/api/lhb/config")
+async def get_lhb_config():
+    return lhb_manager.config
+
+@app.post("/api/lhb/config")
+async def update_lhb_config(config: LHBConfigRequest):
+    lhb_manager.update_settings(config.enabled, config.days, config.min_amount)
+    return {"status": "ok", "config": lhb_manager.config}
+
+@app.post("/api/lhb/sync")
+async def sync_lhb_data(background_tasks: BackgroundTasks):
+    """Trigger LHB sync in background"""
+    if lhb_manager.is_syncing:
+        return {"status": "error", "message": "Sync already in progress"}
+        
+    background_tasks.add_task(lhb_manager.fetch_and_update_data, logger=lambda msg: asyncio.run(manager.broadcast(msg)))
+    return {"status": "ok", "message": "LHB sync started in background"}
+
+@app.get("/api/lhb/status")
+async def get_lhb_status():
+    return {"is_syncing": lhb_manager.is_syncing}
+
+# --- Scheduler ---
+@app.on_event("startup")
+async def startup_event():
+    # Start background scheduler loop
+    asyncio.create_task(scheduler_loop())
+
+async def scheduler_loop():
+    """Simple scheduler to run tasks at specific times"""
+    while True:
+        now = datetime.now()
+        # Check for 18:00 daily sync
+        if now.hour == 18 and now.minute == 0 and now.second < 10:
+            if lhb_manager.config['enabled'] and not lhb_manager.is_syncing:
+                print(f"[{now}] Auto-starting LHB sync...")
+                # Run in executor to avoid blocking loop
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(None, lhb_manager.fetch_and_update_data, lambda msg: asyncio.run(manager.broadcast(msg)))
+                # Sleep to avoid multiple triggers
+                await asyncio.sleep(60)
+        
+        await asyncio.sleep(5) # Check every 5 seconds
 
 # Trigger reload for metrics update

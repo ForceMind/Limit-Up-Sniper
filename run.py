@@ -12,4 +12,10 @@ if __name__ == "__main__":
     # Note: 'workers' > 1 requires the app to be stateless or use external storage.
     # Since we use in-memory state (global vars), we MUST use workers=1.
     # To use multi-core for processing, we rely on ProcessPoolExecutor in the background tasks.
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "app.main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=True,
+        reload_excludes=["*.json", "*.csv", "*.txt", "*.log", "data/*"]
+    )

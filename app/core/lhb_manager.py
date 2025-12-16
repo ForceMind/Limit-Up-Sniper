@@ -1,0 +1,410 @@
+import akshare as ak
+import pandas as pd
+import os
+import json
+import time
+import random
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / "data"
+KLINE_DIR = DATA_DIR / "kline_cache"
+LHB_FILE = DATA_DIR / "lhb_history.csv"
+SEATS_FILE = DATA_DIR / "vip_seats.json"
+
+# Ensure directories exist
+DATA_DIR.mkdir(exist_ok=True)
+KLINE_DIR.mkdir(exist_ok=True)
+
+class LHBManager:
+    def __init__(self):
+        self.config = {
+            "enabled": False,
+            "days": 90,
+            "min_amount": 50000000, # 5000万
+            "last_update": None
+        }
+        self.is_syncing = False
+        self.hot_money_map = {}
+        self.load_config()
+        self.load_hot_money_map()
+
+    def load_hot_money_map(self):
+        map_path = DATA_DIR / "seat_mappings.json"
+        if map_path.exists():
+            try:
+                with open(map_path, 'r', encoding='utf-8') as f:
+                    self.hot_money_map = json.load(f)
+            except Exception as e:
+                print(f"Error loading hot money map: {e}")
+
+    def load_config(self):
+        config_path = DATA_DIR / "lhb_config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    saved = json.load(f)
+                    self.config.update(saved)
+            except:
+                pass
+
+    def save_config(self):
+        config_path = DATA_DIR / "lhb_config.json"
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=2)
+
+    def update_settings(self, enabled, days, min_amount):
+        self.config['enabled'] = enabled
+        self.config['days'] = days
+        self.config['min_amount'] = min_amount
+        self.save_config()
+        
+        if enabled:
+            # Check if we need to backfill data
+            # For simplicity, we trigger a sync if enabled
+            # In a real app, we might want to do this asynchronously
+            pass
+
+    def fetch_and_update_data(self, logger=None):
+        if self.is_syncing:
+            if logger: logger("[LHB] 同步任务正在进行中，请勿重复操作。")
+            return
+
+        if not self.config['enabled']:
+            if logger: logger("[LHB] 龙虎榜功能未开启，跳过更新。")
+            return
+
+        self.is_syncing = True
+        try:
+            days = self.config['days']
+            min_amount = self.config['min_amount']
+            
+            if logger: logger(f"[LHB] 开始同步最近 {days} 个交易日的龙虎榜数据...")
+
+            # 1. Get Trading Dates
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days * 1.5) # Buffer for non-trading days
+            
+            try:
+                tool_trade_date_hist_sina_df = ak.tool_trade_date_hist_sina()
+                trade_dates = tool_trade_date_hist_sina_df['trade_date'].tolist()
+                # Filter dates
+                trade_dates = [d for d in trade_dates if d >= start_date.date() and d <= end_date.date()]
+                trade_dates = trade_dates[-days:] # Take last N trading days
+            except Exception as e:
+                if logger: logger(f"[LHB] 获取交易日历失败: {e}")
+                return
+
+            # 2. Load existing data
+            existing_df = pd.DataFrame()
+            if LHB_FILE.exists():
+                try:
+                    existing_df = pd.read_csv(LHB_FILE)
+                    existing_df['trade_date'] = pd.to_datetime(existing_df['trade_date']).dt.date
+                except:
+                    pass
+
+            new_records = []
+            
+            # 3. Iterate dates and fetch LHB
+            for date_obj in trade_dates:
+                date_str = date_obj.strftime('%Y%m%d')
+                date_iso = date_obj.strftime('%Y-%m-%d')
+                
+                # Check if it is today and before 18:00
+                now = datetime.now()
+                # date_obj is likely datetime.date, so compare directly or use date_obj if it is date
+                check_date = date_obj.date() if hasattr(date_obj, 'date') else date_obj
+                
+                if check_date == now.date() and now.hour < 18:
+                     if logger: logger(f"[LHB] 今日({date_iso})数据尚未公布(18:00后)，跳过。")
+                     continue
+                
+                # Check if we already have data for this date (Optimization)
+                # But user said "if manual range covers missing data, fetch it"
+                # So we should check if this date exists in our CSV
+                if not existing_df.empty and date_obj in existing_df['trade_date'].values:
+                    continue
+
+                if logger: logger(f"[LHB] 正在抓取 {date_iso} 龙虎榜数据...")
+                
+                try:
+                    # akshare: stock_lhb_detail_em (东方财富)
+                    lhb_df = ak.stock_lhb_detail_em(start_date=date_str, end_date=date_str)
+                    if lhb_df is None or lhb_df.empty:
+                        continue
+                    
+                    # Filter by buy amount
+                    # Columns: 序号, 代码, 名称, 解读, 收盘价, 涨跌幅, 龙虎榜净买额, 龙虎榜买入额, 龙虎榜卖出额, 换手率, 市场总成交额, 上榜原因
+                    
+                    # Optimization: Only fetch stocks that match our criteria?
+                    # But we filter by SEAT buy amount. We don't know seat amount until we fetch detail.
+                    # However, if "Net Buy" or "Total Buy" of the stock is small, the seat buy won't be 50M.
+                    # So we can filter stocks where `龙虎榜买入额` > 50M first.
+                    
+                    # lhb_df columns usually have '买入额' (Total buy on LHB).
+                    # Let's assume lhb_df has '龙虎榜买入额'.
+                    
+                    potential_stocks = lhb_df[lhb_df['龙虎榜买入额'] > min_amount]
+                    
+                    for _, row in potential_stocks.iterrows():
+                        stock_code = str(row['代码'])
+                        stock_name = row['名称']
+                        
+                        # Fetch detail for this stock
+                        try:
+                            # stock_lhb_stock_detail_em (Get details for specific date)
+                            # flag="买入" to get buy seats. We can also get "卖出" if needed.
+                            detail_df = ak.stock_lhb_stock_detail_em(symbol=stock_code, date=date_str, flag="买入")
+                            if detail_df is None or detail_df.empty: 
+                                time.sleep(0.2)
+                                continue
+                            
+                            # Filter seats
+                            # Columns: 序号, 营业部名称, 买入金额, 卖出金额, 净买入金额...
+                            # Use a lower threshold for individual seats (e.g. 10M) to capture more Hot Money
+                            seat_min_amount = 10000000 
+                            buy_seats = detail_df[detail_df['买入金额'] > seat_min_amount]
+                            
+                            if not buy_seats.empty:
+                                display_names = []
+                                for s in buy_seats['营业部名称'].tolist():
+                                    # Check for Hot Money match
+                                    hm_name = self.hot_money_map.get(s)
+                                    if not hm_name:
+                                        # Try partial match
+                                        for k, v in self.hot_money_map.items():
+                                            if k in s:
+                                                hm_name = v
+                                                break
+                                    
+                                    if hm_name:
+                                        display_names.append(f"{hm_name}")
+                                    else:
+                                        display_names.append(s.replace('证券股份有限公司', '').replace('有限责任公司', ''))
+                                        
+                                if logger: logger(f"  + {stock_name}({stock_code}): 发现 {len(buy_seats)} 个席位 {display_names}")
+                            
+                            for _, seat in buy_seats.iterrows():
+                                seat_name = seat['营业部名称']
+                                hm_name = self.hot_money_map.get(seat_name)
+                                if not hm_name:
+                                    for k, v in self.hot_money_map.items():
+                                        if k in seat_name:
+                                            hm_name = v
+                                            break
+                                            
+                                new_records.append({
+                                    'trade_date': date_iso,
+                                    'stock_code': stock_code,
+                                    'stock_name': stock_name,
+                                    'buyer_seat_name': seat_name,
+                                    'buy_amount': seat['买入金额'],
+                                    'sell_amount': seat['卖出金额'],
+                                    'hot_money': hm_name if hm_name else ''
+                                })
+                                
+                        except Exception as e:
+                            # print(f"Error fetching detail for {stock_code}: {e}")
+                            pass
+                        
+                        # Sleep between stocks to avoid ban
+                        time.sleep(random.uniform(0.3, 0.8))
+                            
+                    # Sleep between dates
+                    time.sleep(random.uniform(0.5, 1.5))
+                    
+                    # Save incrementally after each date
+                    if new_records:
+                        try:
+                            # Convert new records to DF
+                            new_df = pd.DataFrame(new_records)
+                            
+                            if not existing_df.empty:
+                                existing_df['trade_date'] = existing_df['trade_date'].astype(str)
+                                combined_df = pd.concat([existing_df, new_df])
+                                combined_df = combined_df.drop_duplicates(subset=['trade_date', 'stock_code', 'buyer_seat_name'])
+                            else:
+                                combined_df = new_df
+                            
+                            # Sort
+                            combined_df = combined_df.sort_values('trade_date', ascending=False)
+                            
+                            # Save to disk
+                            combined_df.to_csv(LHB_FILE, index=False)
+                            if logger: logger(f"[LHB] 已保存 {date_iso} 数据 (累计 {len(combined_df)} 条)")
+                            
+                            # Update in-memory existing_df for next iteration
+                            existing_df = combined_df
+                            # Clear new_records to avoid re-adding them
+                            new_records = []
+                            
+                            # Generate Report for this date
+                            self.generate_daily_report(date_iso, logger)
+                            
+                        except Exception as save_err:
+                            if logger: logger(f"[LHB] Error saving data for {date_iso}: {save_err}")
+
+                except Exception as e:
+                    if logger: logger(f"[LHB] Error fetching {date_str}: {e}")
+
+            # 4. Final Cleanup and K-line Download
+            if not existing_df.empty:
+                # Cleanup > 180 days
+                cutoff_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+                existing_df = existing_df[existing_df['trade_date'] >= cutoff_date]
+                existing_df.to_csv(LHB_FILE, index=False)
+                
+                # Update VIP Seats
+                self.update_vip_seats(existing_df)
+                
+                # Trigger K-line download (idempotent check)
+                self.download_kline_data(existing_df, logger)
+                
+            else:
+                if logger: logger("[LHB] 无数据。")
+        finally:
+            self.is_syncing = False
+
+    def update_vip_seats(self, df):
+        # Count appearances
+        seat_counts = df['buyer_seat_name'].value_counts()
+        # Filter seats appearing > 3 times (configurable?)
+        vip_seats = seat_counts[seat_counts >= 3].index.tolist()
+        
+        with open(SEATS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(vip_seats, f, ensure_ascii=False, indent=2)
+
+    def download_kline_data(self, df, logger=None):
+        """
+        Download 1-min K-line data for the specific date and stock
+        """
+        if df.empty: return
+        
+        # Unique stock-date combinations
+        tasks = df[['stock_code', 'trade_date']].drop_duplicates()
+        
+        if logger: logger(f"[LHB] 正在同步 {len(tasks)} 个 K线数据文件...")
+        
+        for _, row in tasks.iterrows():
+            code = str(row['stock_code'])
+            date_str = str(row['trade_date']) # YYYY-MM-DD
+            
+            file_name = f"{code}_{date_str}.csv"
+            file_path = KLINE_DIR / file_name
+            
+            if file_path.exists(): continue
+            
+            try:
+                # akshare: stock_zh_a_minute
+                # Note: fetching historical 1-min data is tricky with free APIs.
+                # akshare's `stock_zh_a_hist_min_em` usually supports recent data.
+                # For 90 days ago, it might be hard.
+                # Let's try `stock_zh_a_hist_min_em` with adjust='qfq'
+                
+                # Convert date to format needed? API usually takes start_date
+                # But min data API usually just gives "recent N points" or specific range.
+                # stock_zh_a_hist_min_em(symbol="000001", start_date="...", end_date="...", period="1", adjust="qfq")
+                
+                start_dt = date_str + " 09:00:00"
+                end_dt = date_str + " 15:00:00"
+                
+                kline = ak.stock_zh_a_hist_min_em(symbol=code, start_date=start_dt, end_date=end_dt, period="1", adjust="qfq")
+                
+                if kline is not None and not kline.empty:
+                    kline.to_csv(file_path, index=False)
+                    
+                time.sleep(0.2)
+            except Exception as e:
+                # if logger: logger(f"Failed K-line {code} {date_str}: {e}")
+                pass
+
+    def get_kline_1min(self, code, date_str):
+        file_path = KLINE_DIR / f"{code}_{date_str}.csv"
+        if file_path.exists():
+            return pd.read_csv(file_path)
+        return None
+
+    def get_latest_lhb_info(self, code):
+        """
+        Get the latest LHB info for a stock, including Hot Money names.
+        Returns a string summary or None.
+        """
+        if not LHB_FILE.exists():
+            return None
+            
+        try:
+            df = pd.read_csv(LHB_FILE)
+            df['stock_code'] = df['stock_code'].astype(str)
+            
+            # Filter by code
+            stock_lhb = df[df['stock_code'] == str(code)]
+            if stock_lhb.empty:
+                return None
+                
+            # Get latest date
+            latest_date = stock_lhb['trade_date'].max()
+            latest_data = stock_lhb[stock_lhb['trade_date'] == latest_date]
+            
+            seats = []
+            for _, row in latest_data.iterrows():
+                seat = row['buyer_seat_name']
+                hot_money = row.get('hot_money', '')
+                if pd.notna(hot_money) and hot_money:
+                    seats.append(f"{hot_money}({seat})")
+                else:
+                    seats.append(seat)
+            
+            return {
+                "date": latest_date,
+                "seats": seats
+            }
+        except Exception as e:
+            print(f"Error getting LHB info: {e}")
+            return None
+
+    def generate_daily_report(self, date_str, logger=None):
+        """
+        Generate a summary report for a specific date.
+        """
+        if not LHB_FILE.exists(): return
+        
+        try:
+            df = pd.read_csv(LHB_FILE)
+            # Ensure date format matches
+            # date_str is usually YYYY-MM-DD
+            df_day = df[df['trade_date'] == date_str]
+            
+            if df_day.empty:
+                if logger: logger(f"[LHB Report] {date_str} 无数据。")
+                return
+
+            # 1. Top Hot Money
+            hot_money_counts = df_day[df_day['hot_money'].notna() & (df_day['hot_money'] != '')]['hot_money'].value_counts()
+            
+            report = [f"\n=== 龙虎榜日报 {date_str} ==="]
+            if not hot_money_counts.empty:
+                report.append("【活跃游资】")
+                for name, count in hot_money_counts.head(10).items():
+                    # Get stocks they bought
+                    stocks = df_day[df_day['hot_money'] == name]['stock_name'].unique().tolist()
+                    report.append(f"  - {name}: 出手 {count} 次 ({', '.join(stocks)})")
+            
+            # 2. Top Stocks by Buy Amount (approx sum of seats)
+            stock_buys = df_day.groupby('stock_name')['buy_amount'].sum().sort_values(ascending=False)
+            report.append("\n【大额榜单】")
+            for name, amount in stock_buys.head(5).items():
+                report.append(f"  - {name}: 席位合计买入 {amount/100000000:.2f} 亿")
+                
+            report_str = "\n".join(report)
+            if logger: 
+                logger(report_str)
+            else:
+                print(report_str)
+                
+        except Exception as e:
+            print(f"Error generating report: {e}")
+
+lhb_manager = LHBManager()

@@ -8,6 +8,7 @@ from pathlib import Path
 from app.core.stock_utils import calculate_metrics
 from app.core.market_scanner import scan_intraday_limit_up, get_market_overview, scan_limit_up_pool, scan_broken_limit_pool
 from app.core.ai_cache import ai_cache
+from app.core.lhb_manager import lhb_manager
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -501,6 +502,12 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     if isinstance(circ_value, (int, float)) and circ_value > 0:
         circ_value = f"{round(circ_value / 100000000, 2)}亿"
     
+    # Get LHB Info
+    lhb_info = lhb_manager.get_latest_lhb_info(code)
+    lhb_text = "暂无龙虎榜数据"
+    if lhb_info:
+        lhb_text = f"日期: {lhb_info['date']}, 席位: {', '.join(lhb_info['seats'])}"
+
     # 1. 尝试获取该股票的最新新闻 (模拟搜索)
     # 这里简单复用 get_cls_news 的逻辑，但针对特定关键词过滤
     # 实际生产中应该调用搜索引擎API或专门的新闻接口
@@ -525,21 +532,23 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - 换手率: {turnover}%
 - 流通市值: {circ_value}
 - 概念: {concept}
+- 龙虎榜数据: {lhb_text}
 - 历史指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【核心分析逻辑】
 请重点回答以下问题（Chain of Thought）：
 1. **抢筹逻辑**: 基于今日的表现（如涨停、烂板、大长腿等），为什么这只股票明天竞价可能会有溢价或弱转强？
 2. **预期差**: 市场可能忽略了什么？是否存在卡位、补涨或穿越的预期？
-3. **风险收益比**: 如果明天竞价买入，盈亏比如何？
+3. **主力动向**: 结合龙虎榜数据（如果有），分析主力（如{lhb_text}）的意图。
+4. **风险收益比**: 如果明天竞价买入，盈亏比如何？
 
 【最终输出】
 请以 Markdown 格式输出简报：
 ### 1. 核心抢筹理由
 (直击痛点，说明上涨预期)
 
-### 2. 预期差与博弈点
-(分析主力意图和市场情绪)
+### 2. 主力与预期差
+(分析主力意图和市场情绪，提及知名游资)
 
 ### 3. 竞价策略
 - **关注价格**: (什么样的开盘价符合预期)
@@ -560,20 +569,22 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - 换手率: {turnover}%
 - 流通市值: {circ_value}
 - 概念: {concept}
+- 龙虎榜数据: {lhb_text}
 - 连板高度/指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【分析逻辑】
 1. **涨停质量**: 封单如何？是否烂板？是主动进攻还是被动跟风？
 2. **板块地位**: 是龙头、中军还是补涨？板块梯队是否完整？
-3. **明日推演**: 预期是高开秒板、分歧换手还是直接核按钮？
+3. **主力分析**: 龙虎榜显示有哪些知名游资（{lhb_text}）？他们的风格是锁仓还是砸盘？
+4. **明日推演**: 预期是高开秒板、分歧换手还是直接核按钮？
 
 【最终输出】
 请以 Markdown 格式输出简报：
 ### 1. 涨停质量评估
 (分析封板力度和主力意图)
 
-### 2. 板块地位与梯队
-(明确其在板块中的角色)
+### 2. 板块地位与主力
+(明确其在板块中的角色，点评龙虎榜游资)
 
 ### 3. 明日接力策略
 - **预期开盘**: (高开/平开/低开)
@@ -594,10 +605,22 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - 换手率: {turnover}%
 - 流通市值: {circ_value}
 - 核心概念: {concept}
+- 龙虎榜数据: {lhb_text}
 
 【分析逻辑】
 1. **基本面/题材**: 公司核心业务是什么？近期是否有催化剂（业绩、政策、重组）？
 2. **技术趋势**: 当前处于上升趋势、震荡还是下跌中继？关键支撑压力位在哪里？
+3. **资金面**: 龙虎榜是否有机构或知名游资介入？
+
+【最终输出】
+请以 Markdown 格式输出简报：
+### 1. 核心逻辑与题材
+(简述上涨理由)
+
+### 2. 技术与资金面
+(分析K线形态和主力资金，提及龙虎榜)
+
+### 3. 操作建议
 3. **资金流向**: 近期是否有主力资金持续流入迹象？
 
 【最终输出】

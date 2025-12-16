@@ -73,7 +73,7 @@
                 </div>
             </div>
             
-            <div class="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between md:justify-end">
+            <div class="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between md:justify-end flex-wrap">
                 <!-- Settings Button (Merged Filter & Config) -->
                 <button @click="showSettingsModal = true" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors" title="系统设置">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -89,13 +89,13 @@
                 </button>
 
                 <!-- Search Bar -->
-                <div class="relative group">
+                <div class="relative group flex-1 md:flex-none">
                     <input type="text" v-model="searchQuery" @input="onSearchInput" 
                            placeholder="搜索代码/拼音" 
-                           class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-300 text-xs rounded px-2 py-1 w-24 md:w-48 focus:w-48 md:focus:w-64 focus:outline-none focus:border-blue-500 transition-all">
+                           class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-300 text-xs rounded px-2 py-1 w-full md:w-48 focus:w-full md:focus:w-64 focus:outline-none focus:border-blue-500 transition-all">
                     
                     <!-- Search Results Dropdown -->
-                    <div v-if="searchResults.length > 0" class="absolute top-full left-0 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-xl mt-1 z-50 max-h-60 overflow-y-auto">
+                    <div v-if="searchResults.length > 0" class="absolute top-full left-0 w-full md:w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-xl mt-1 z-50 max-h-60 overflow-y-auto">
                         <div v-for="item in searchResults" :key="item.code" 
                              @click="addStockFromSearch(item)"
                              class="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex justify-between items-center text-xs">
@@ -106,15 +106,15 @@
                     </div>
                 </div>
 
-                <button @click="runAnalysis('after_hours')" :disabled="isAnalyzing" 
+                <button @click="runAnalysis('after_hours')" :disabled="isAnalyzing || isSyncingLHB" 
                         class="px-3 py-1 text-xs font-bold rounded border transition-colors flex items-center gap-2 whitespace-nowrap"
-                        :class="isAnalyzing ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 cursor-not-allowed' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-500/50 hover:bg-purple-200 dark:hover:bg-purple-800/50'">
+                        :class="(isAnalyzing || isSyncingLHB) ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 cursor-not-allowed' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-500/50 hover:bg-purple-200 dark:hover:bg-purple-800/50'">
                     <span v-if="isAnalyzing" class="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></span>
                     {{ isAnalyzing ? '分析中...' : '🌙 盘后复盘' }}
                 </button>
-                <button @click="runAnalysis('intraday')" :disabled="isAnalyzing" 
+                <button @click="runAnalysis('intraday')" :disabled="isAnalyzing || isSyncingLHB" 
                         class="px-3 py-1 text-xs font-bold rounded border transition-colors flex items-center gap-2 whitespace-nowrap"
-                        :class="isAnalyzing ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 cursor-not-allowed' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-300 dark:border-red-500/50 hover:bg-red-200 dark:hover:bg-red-800/50'">
+                        :class="(isAnalyzing || isSyncingLHB) ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 border-gray-300 dark:border-gray-600 cursor-not-allowed' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-300 dark:border-red-500/50 hover:bg-red-200 dark:hover:bg-red-800/50'">
                     <span v-if="isAnalyzing" class="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></span>
                     {{ isAnalyzing ? '分析中...' : '☀️ 盘中突击' }}
                 </button>
@@ -326,13 +326,14 @@
 
                 <!-- Scrollable Table Container -->
                 <div class="flex-1 overflow-auto relative">
-                    <div class="min-w-[800px]">
+                    <div class="min-w-[950px]">
                         <!-- Table Header -->
                         <div class="grid gap-2 px-2 py-2 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-900/90 sticky top-0 z-30"
-                             style="grid-template-columns: 60px 70px 1fr 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
+                             style="grid-template-columns: 60px 70px 1fr 100px 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
                             <div class="">代码</div>
                             <div class="">名称</div>
                             <div class="text-center">板块/概念</div>
+                            <div class="text-center">疑似主力</div>
                             <div class="text-right">现价</div>
                             <div class="text-right">涨幅</div>
                             <div class="text-right">涨速</div>
@@ -350,7 +351,7 @@
                                 <div v-for="(stock, index) in limitUpStocks" :key="stock.code" 
                                      class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
                                      :class="getRowHighlightClass(stock)"
-                                     style="grid-template-columns: 60px 70px 1fr 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
+                                     style="grid-template-columns: 60px 70px 1fr 100px 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
                                     
                                     <div class="text-gray-900 dark:text-gray-300 text-sm font-bold flex items-center gap-1">
                                         <button v-if="isEditMode" @click.stop="removeStock(stock, 'ai')" class="text-red-500 hover:text-red-700 font-bold px-1">×</button>
@@ -364,6 +365,9 @@
                                         <button @click.stop="analyzeStock(stock, 'limitup')" class="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 px-1.5 py-0.5 rounded hover:scale-110 transition-transform shadow-sm border border-purple-200 dark:border-purple-700 shrink-0" title="AI深度分析">
                                             🤖
                                         </button>
+                                    </div>
+                                    <div class="text-center text-xs font-bold text-yellow-600 dark:text-yellow-400 cursor-help truncate" :title="getSeatTooltip(stock)">
+                                        {{ getSeatName(stock) }}
                                     </div>
                                     <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
                                     <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
@@ -394,7 +398,7 @@
                             <div class="p-2 space-y-1 opacity-60 grayscale hover:grayscale-0 transition-all">
                                 <div v-for="(stock, index) in discardedStocks" :key="stock.code" 
                                      class="rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-gray-100 dark:bg-gray-800/30"
-                                     style="grid-template-columns: 60px 70px 1fr 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
+                                     style="grid-template-columns: 60px 70px 1fr 100px 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
                                     
                                     <div class="text-gray-500 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
                                     <div class="font-bold truncate text-gray-500">
@@ -403,6 +407,7 @@
                                     <div class="text-xs text-gray-500 truncate" :title="stock.news_summary || stock.concept">
                                         {{ stock.news_summary || stock.concept }}
                                     </div>
+                                    <div class="text-center text-xs text-gray-400">-</div>
                                     <div class="text-right font-mono text-gray-500">{{ stock.current.toFixed(2) }}</div>
                                     <div class="text-right font-bold" :class="getColorClass(stock.change_percent)">
                                         {{ stock.change_percent }}%
@@ -875,7 +880,46 @@
                         </div>
                     </div>
 
-                    <!-- 3. API Key Setting -->
+                    <!-- 3. LHB Settings -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                            <span>🐉</span> 龙虎榜数据配置
+                        </h4>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">启用龙虎榜抓取</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="lhbConfig.enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-orange-600"></div>
+                                </label>
+                            </div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                * 每日 18:00 自动同步当天数据
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">抓取周期 (天)</span>
+                                <input type="number" v-model.number="lhbConfig.days" class="w-20 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600">
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">最小买入额 (万)</span>
+                                <div class="flex items-center gap-1">
+                                    <input type="number" v-model.number="lhbConfig.min_amount_wan" class="w-20 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600">
+                                </div>
+                            </div>
+                            <div class="flex justify-end pt-2">
+                                <button @click="syncLHB" :disabled="!lhbConfig.enabled || isSyncingLHB" 
+                                        class="px-3 py-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded border border-orange-200 dark:border-orange-700 hover:bg-orange-200 dark:hover:bg-orange-800/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+                                    <span v-if="isSyncingLHB" class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                    {{ isSyncingLHB ? '同步中...' : '立即同步数据' }}
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-gray-400">
+                                * 数据将保存在本地 data 目录，包含龙虎榜记录及对应日期的1分钟K线。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 4. API Key Setting -->
                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                             <span>🔑</span> API 设置
@@ -979,7 +1023,13 @@
                         current_status: 'Idle',
                         last_run_time: null,
                         next_run_time: null
-                    }
+                    },
+                    lhbConfig: {
+                        enabled: false,
+                        days: 90,
+                        min_amount_wan: 5000
+                    },
+                    isSyncingLHB: false
                 }
             },
             computed: {
@@ -1055,6 +1105,59 @@
                 }
             },
             methods: {
+                async fetchLHBConfig() {
+                    try {
+                        const response = await fetch('/api/lhb/config');
+                        const data = await response.json();
+                        this.lhbConfig = {
+                            enabled: data.enabled,
+                            days: data.days,
+                            min_amount_wan: data.min_amount / 10000
+                        };
+                    } catch (e) {
+                        console.error('Failed to fetch LHB config:', e);
+                    }
+                },
+                async syncLHB() {
+                    if (this.isSyncingLHB) return;
+                    this.isSyncingLHB = true;
+                    // Save config first
+                    try {
+                        await fetch('/api/lhb/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                enabled: this.lhbConfig.enabled,
+                                days: this.lhbConfig.days,
+                                min_amount: this.lhbConfig.min_amount_wan * 10000
+                            })
+                        });
+                        
+                        // Trigger sync
+                        const response = await fetch('/api/lhb/sync', { method: 'POST' });
+                        const result = await response.json();
+                        if (result.status === 'ok') {
+                            alert('已触发后台同步，请留意日志窗口。');
+                        } else {
+                            alert(result.message);
+                        }
+                    } catch (e) {
+                        alert('同步请求失败');
+                    } finally {
+                        // Don't set false immediately, let polling handle it or just timeout
+                        // Actually, for better UX, we should poll status
+                        this.checkLHBStatus();
+                    }
+                },
+                async checkLHBStatus() {
+                    try {
+                        const response = await fetch('/api/lhb/status');
+                        const data = await response.json();
+                        this.isSyncingLHB = data.is_syncing;
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
                 async fetchConfig() {
                     try {
                         const response = await fetch('/api/config');
@@ -1283,6 +1386,19 @@
                         this.sentimentLoading = false;
                     }
                 },
+                getSeatName(stock) {
+                    if (stock.likely_seats && stock.likely_seats.length > 0) {
+                        return stock.likely_seats[0].name;
+                    }
+                    return '-';
+                },
+                getSeatTooltip(stock) {
+                    if (stock.likely_seats && stock.likely_seats.length > 0) {
+                        const s = stock.likely_seats[0];
+                        return `特征匹配度 ${s.similarity}% (${s.desc})`;
+                    }
+                    return '';
+                },
                 getColorClass(percent) {
                     if (percent > 0) return 'text-red-600 dark:text-red-400';
                     if (percent < 0) return 'text-green-600 dark:text-green-400';
@@ -1508,6 +1624,7 @@
                 },
             mounted() {
                 this.fetchConfig();
+                this.fetchLHBConfig();
                 setInterval(this.fetchConfig, 10000); // Poll config every 10s
                 
                 // Initialize Theme
@@ -1576,6 +1693,9 @@
                         this.fetchIndices(); // Fast update for indices
                     }
                 }, 3000);
+
+                // Poll LHB Status
+                setInterval(this.checkLHBStatus, 5000);
 
                 setInterval(() => {
                     const now = new Date();
