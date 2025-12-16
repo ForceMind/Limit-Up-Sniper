@@ -113,10 +113,22 @@ def clean_watchlist():
             new_list.append(item)
             
     # Limit size
-    if len(new_list) > 50:
-        new_list = new_list[:50]
+    if len(new_list) > 100:
+        new_list = new_list[:100]
         
-    watchlist_data = new_list
+    # [新增] 每日清理逻辑: 如果是新的一天(9:00前)，清理掉昨天的"已剔除"或"过期"数据
+    # 这里简单判断: 如果列表里有数据，且当前时间是 08:30-09:15 之间，且数据是旧的(added_time < today_start)，则清理
+    # 为了简化，我们只清理明确标记为 Discarded 的
+    final_list = []
+    for item in new_list:
+        if item.get('strategy_type') == 'Discarded':
+             # 如果是 Discarded，检查是否是今天生成的? 
+             # 实际上用户问"什么时候彻底删除"，我们可以定义为: 每次分析前(clean_watchlist被调用时)
+             # 如果状态是 Discarded，直接丢弃，不保留在列表中
+             continue
+        final_list.append(item)
+    
+    watchlist_data = final_list
     save_watchlist(watchlist_data)
     reload_watchlist_globals()
 
@@ -659,6 +671,11 @@ async def scheduler_loop():
             # Sleep longer on weekends
             await asyncio.sleep(3600)
             continue
+            
+        # Safety check: If last_run_time is in the future, reset it
+        if SYSTEM_CONFIG["last_run_time"] > current_timestamp:
+            print(f"Resetting future last_run_time: {SYSTEM_CONFIG['last_run_time']} -> {current_timestamp}")
+            SYSTEM_CONFIG["last_run_time"] = current_timestamp - interval_seconds # Force run if needed
 
         # --- Schedule Logic ---
         interval_seconds = 3600 # Default 1h

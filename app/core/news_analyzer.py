@@ -773,22 +773,29 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             sealed_codes = set(s['code'] for s in sealed_stocks)
             
             # 2.1 标记不再满足条件的股票为 Discarded
+            # [Modified] 用户反馈不要清空列表，改为保留历史记录，不做 Discarded 处理
+            # for code, item in watchlist.items():
+            #     # 只处理之前是由盘中突击策略加入的股票
+            #     # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
+            #     if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
+            #         if code not in scanner_codes:
+            #             # 不在最新的扫描结果中，说明条件已变差(或已涨停但未被识别为sealed?)
+            #             # 标记为 Discarded，前端根据此状态显示在剔除区
+            #             item['strategy_type'] = 'Discarded'
+            #             if '已剔除' not in item['news_summary']:
+            #                 item['news_summary'] += " (已剔除)"
+            #     elif code in sealed_codes:
+            #         # 如果在 sealed_stocks 中，更新状态为 Sealed (或者在 news_summary 中注明)
+            #         # 这样用户知道它已经封板了
+            #         if '已封板' not in item['news_summary']:
+            #             item['news_summary'] = f"[已封板] {item['news_summary']}"
+            
+            # 仅更新已封板状态
             for code, item in watchlist.items():
-                # 只处理之前是由盘中突击策略加入的股票
-                # 识别特征: strategy=LimitUp 且 reason 包含 "盘中突击"
-                if item.get('strategy_type') == 'LimitUp' and '盘中突击' in item.get('news_summary', ''):
-                    if code not in scanner_codes:
-                        # 不在最新的扫描结果中，说明条件已变差(或已涨停但未被识别为sealed?)
-                        # 标记为 Discarded，前端根据此状态显示在剔除区
-                        item['strategy_type'] = 'Discarded'
-                        if '已剔除' not in item['news_summary']:
-                            item['news_summary'] += " (已剔除)"
-                elif code in sealed_codes:
-                    # 如果在 sealed_stocks 中，更新状态为 Sealed (或者在 news_summary 中注明)
-                    # 这样用户知道它已经封板了
-                    if '已封板' not in item['news_summary']:
-                        item['news_summary'] = f"[已封板] {item['news_summary']}"
-        
+                if code in sealed_codes:
+                     if '已封板' not in item.get('news_summary', ''):
+                        item['news_summary'] = f"[已封板] {item.get('news_summary', '')}"
+
             # 2.2 添加/更新当前扫描到的股票
             for stock in scanner_stocks:
                 code = stock['code']
@@ -815,6 +822,16 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
                 # 覆盖旧数据 (包括之前可能被标记为 Discarded 的，如果又满足条件了就复活)
                 watchlist[code] = new_item
             
+            # [新增] 竞价列表清理逻辑 (10:00 后清理竞价策略股票)
+            now = datetime.now()
+            if now.hour >= 10:
+                for code, item in watchlist.items():
+                    if item.get('strategy_type') == 'Call Auction' and '已剔除' not in item.get('news_summary', ''):
+                        # 检查是否涨停，如果没涨停且时间已过，则剔除
+                        if code not in sealed_codes:
+                            item['strategy_type'] = 'Discarded'
+                            item['news_summary'] = f"[竞价过期] {item.get('news_summary', '')}"
+
             # [新增] 立即保存并通知前端，实现"先加列表，再丰富数据"
             try:
                 temp_list = list(watchlist.values())
