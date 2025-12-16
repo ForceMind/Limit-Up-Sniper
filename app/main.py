@@ -580,7 +580,8 @@ SYSTEM_CONFIG = {
     "fixed_interval_minutes": 60,
     "last_run_time": 0,
     "next_run_time": 0,
-    "current_status": "Idle",
+    "current_status": "空闲中",
+    "active_rule_index": -1,
     "schedule_plan": DEFAULT_SCHEDULE
 }
 
@@ -661,132 +662,153 @@ async def scheduler_loop():
         print(f"Startup check failed: {e}")
 
     while True:
-        current_timestamp = time.time()
-        now = datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
-        
-        # Weekend Check (Saturday=5, Sunday=6)
-        if not is_market_open_day():
-            # Sleep longer on weekends
-            await asyncio.sleep(3600)
-            continue
+        try:
+            current_timestamp = time.time()
+            now = datetime.now()
+            current_hour = now.hour
+            current_minute = now.minute
             
-        # Safety check: If last_run_time is in the future, reset it
-        if SYSTEM_CONFIG["last_run_time"] > current_timestamp:
-            print(f"Resetting future last_run_time: {SYSTEM_CONFIG['last_run_time']} -> {current_timestamp}")
-            SYSTEM_CONFIG["last_run_time"] = current_timestamp - interval_seconds # Force run if needed
-
-        # --- Schedule Logic ---
-        interval_seconds = 3600 # Default 1h
-        lookback_hours = 1
-        mode = "after_hours"
-        
-        if SYSTEM_CONFIG["use_smart_schedule"]:
-            current_time_str = now.strftime("%H:%M")
-            matched_rule = None
-            
-            # Default fallback
-            interval_seconds = 3600
-            mode = "after_hours"
-
-            for rule in SYSTEM_CONFIG.get("schedule_plan", DEFAULT_SCHEDULE):
-                start = rule["start"]
-                end = rule["end"]
+            # Weekend Check (Saturday=5, Sunday=6)
+            if not is_market_open_day():
+                # Sleep longer on weekends
+                await asyncio.sleep(3600)
+                continue
                 
-                # Check if time is in range
-                in_range = False
-                if start <= end:
-                    if start <= current_time_str < end:
-                        in_range = True
-                else: # Cross midnight (e.g. 23:00 to 06:00)
-                    if start <= current_time_str or current_time_str < end:
-                        in_range = True
-                        
-                if in_range:
-                    matched_rule = rule
-                    break
+            # --- Schedule Logic ---
+            interval_seconds = 3600 # Default 1h
+            lookback_hours = 1
+            mode = "after_hours"
             
-            if matched_rule:
-                interval_seconds = matched_rule["interval"] * 60
-                mode = matched_rule["mode"]
-                if matched_rule["mode"] == "none":
-                     interval_seconds = 999999
+            # Reset active rule index
+            SYSTEM_CONFIG["active_rule_index"] = -1
             
-            lookback_hours = max(0.25, interval_seconds / 3600)
-
-            # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
-            if current_hour == 15 and current_minute >= 15:
-                 last_run_dt = datetime.fromtimestamp(SYSTEM_CONFIG["last_run_time"]) if SYSTEM_CONFIG["last_run_time"] > 0 else datetime.fromtimestamp(0)
-                 # If last run was today but before 15:15
-                 if last_run_dt.date() == now.date() and (last_run_dt.hour < 15 or (last_run_dt.hour == 15 and last_run_dt.minute < 15)):
-                     interval_seconds = 0 # Force run
-        else:
-            # Manual Interval
-            interval_seconds = SYSTEM_CONFIG["fixed_interval_minutes"] * 60
-            lookback_hours = SYSTEM_CONFIG["fixed_interval_minutes"] / 60
-            # Simple mode logic for manual
-            if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
-                mode = "intraday"
-            else:
+            if SYSTEM_CONFIG["use_smart_schedule"]:
+                current_time_str = now.strftime("%H:%M")
+                matched_rule = None
+                
+                # Default fallback
+                interval_seconds = 3600
                 mode = "after_hours"
 
-        # Update Next Run Time for UI
-        # If we just ran (last_run_time is very close to now), next run is now + interval
-        # If we haven't run in a while, next run is effectively "now" (pending execution)
-        if SYSTEM_CONFIG["last_run_time"] == 0:
-             SYSTEM_CONFIG["next_run_time"] = current_timestamp
-        else:
-             # Calculate next run based on last run
-             next_run = SYSTEM_CONFIG["last_run_time"] + interval_seconds
-             # If next run is in the past (overdue), show it as now
-             if next_run < current_timestamp:
-                 SYSTEM_CONFIG["next_run_time"] = current_timestamp
-             else:
-                 SYSTEM_CONFIG["next_run_time"] = next_run
-
-        # Task 1: Analysis
-        if SYSTEM_CONFIG["auto_analysis_enabled"]:
-            if current_timestamp - SYSTEM_CONFIG["last_run_time"] >= interval_seconds:
-                # Special check to avoid running during the 15:00-15:15 gap (only in smart mode)
-                should_run = True
-                if SYSTEM_CONFIG["use_smart_schedule"] and (current_hour == 15 and current_minute < 15):
-                    should_run = False
+                for index, rule in enumerate(SYSTEM_CONFIG.get("schedule_plan", DEFAULT_SCHEDULE)):
+                    start = rule["start"]
+                    end = rule["end"]
+                    
+                    # Check if time is in range
+                    in_range = False
+                    if start <= end:
+                        if start <= current_time_str < end:
+                            in_range = True
+                    else: # Cross midnight (e.g. 23:00 to 06:00)
+                        if start <= current_time_str or current_time_str < end:
+                            in_range = True
+                            
+                    if in_range:
+                        matched_rule = rule
+                        SYSTEM_CONFIG["active_rule_index"] = index
+                        break
                 
-                if should_run:
-                    try:
-                        SYSTEM_CONFIG["current_status"] = f"Running {mode}..."
-                        # Update last_run_time BEFORE execution to prevent loop on error
-                        SYSTEM_CONFIG["last_run_time"] = current_timestamp
-                        
-                        # Recalculate next run time immediately after update
-                        SYSTEM_CONFIG["next_run_time"] = current_timestamp + interval_seconds
-                        
-                        thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
-                        await asyncio.to_thread(execute_analysis, mode, lookback_hours)
-                    except Exception as e:
-                        print(f"Scheduler error: {e}")
-                    finally:
-                        SYSTEM_CONFIG["current_status"] = "Idle"
-        else:
-             SYSTEM_CONFIG["current_status"] = "Paused"
-        
-        # Task 2: Refresh Quotes (Every 3 seconds)
-        # Only during trading hours or shortly after
-        if now.weekday() < 5 and (9 <= current_hour < 16):
-            try:
-                stocks = await asyncio.to_thread(get_stock_quotes)
-            except Exception as e:
-                pass
-            
-        # Task 3: Update Limit Up Pool (Every 30 seconds)
-        if current_timestamp - last_pool_update_time >= 30:
-             # Only during trading hours
-             if is_trading_time():
-                 await asyncio.to_thread(update_limit_up_pool_task)
-                 last_pool_update_time = current_timestamp
+                if matched_rule:
+                    interval_seconds = matched_rule["interval"] * 60
+                    mode = matched_rule["mode"]
+                    if matched_rule["mode"] == "none":
+                        interval_seconds = 999999
+                
+                lookback_hours = max(0.25, interval_seconds / 3600)
 
-        await asyncio.sleep(5) # Check every 5 seconds
+                # Special Trigger: Force run at 15:15 if last run was intraday (before 15:15)
+                if current_hour == 15 and current_minute >= 15:
+                    last_run_dt = datetime.fromtimestamp(SYSTEM_CONFIG["last_run_time"]) if SYSTEM_CONFIG["last_run_time"] > 0 else datetime.fromtimestamp(0)
+                    # If last run was today but before 15:15
+                    if last_run_dt.date() == now.date() and (last_run_dt.hour < 15 or (last_run_dt.hour == 15 and last_run_dt.minute < 15)):
+                        interval_seconds = 0 # Force run
+            else:
+                # Manual Interval
+                interval_seconds = SYSTEM_CONFIG["fixed_interval_minutes"] * 60
+                lookback_hours = SYSTEM_CONFIG["fixed_interval_minutes"] / 60
+                # Simple mode logic for manual
+                if (current_hour > 9 or (current_hour == 9 and current_minute >= 30)) and current_hour < 15:
+                    mode = "intraday"
+                else:
+                    mode = "after_hours"
+
+            # Safety check: If last_run_time is in the future, reset it
+            # [Moved here to ensure interval_seconds is defined]
+            if SYSTEM_CONFIG["last_run_time"] > current_timestamp:
+                print(f"Resetting future last_run_time: {SYSTEM_CONFIG['last_run_time']} -> {current_timestamp}")
+                SYSTEM_CONFIG["last_run_time"] = current_timestamp - interval_seconds # Force run if needed
+
+            # Update Next Run Time for UI
+            # If we just ran (last_run_time is very close to now), next run is now + interval
+            # If we haven't run in a while, next run is effectively "now" (pending execution)
+            if SYSTEM_CONFIG["last_run_time"] == 0:
+                SYSTEM_CONFIG["next_run_time"] = current_timestamp
+            else:
+                # Calculate next run based on last run
+                next_run = SYSTEM_CONFIG["last_run_time"] + interval_seconds
+                # If next run is in the past (overdue), show it as now
+                if next_run < current_timestamp:
+                    SYSTEM_CONFIG["next_run_time"] = current_timestamp
+                else:
+                    SYSTEM_CONFIG["next_run_time"] = next_run
+
+            # Task 1: Analysis
+            if SYSTEM_CONFIG["auto_analysis_enabled"]:
+                if current_timestamp - SYSTEM_CONFIG["last_run_time"] >= interval_seconds:
+                    # Special check to avoid running during the 15:00-15:15 gap (only in smart mode)
+                    should_run = True
+                    if SYSTEM_CONFIG["use_smart_schedule"] and (current_hour == 15 and current_minute < 15):
+                        should_run = False
+                    
+                    if should_run:
+                        try:
+                            mode_cn = "盘后复盘" if mode == "after_hours" else "盘中突击"
+                            SYSTEM_CONFIG["current_status"] = f"正在运行 {mode_cn}..."
+                            # Update last_run_time BEFORE execution to prevent loop on error
+                            SYSTEM_CONFIG["last_run_time"] = current_timestamp
+                            
+                            # Recalculate next run time immediately after update
+                            SYSTEM_CONFIG["next_run_time"] = current_timestamp + interval_seconds
+                            
+                            thread_logger(f">>> 触发定时分析: {mode}, 周期{interval_seconds/60:.0f}分, 回溯{lookback_hours}小时")
+                            await asyncio.to_thread(execute_analysis, mode, lookback_hours)
+                        except Exception as e:
+                            print(f"Scheduler error: {e}")
+                        finally:
+                            SYSTEM_CONFIG["current_status"] = "空闲中"
+            else:
+                SYSTEM_CONFIG["current_status"] = "已暂停"
+            
+            # Task 2: Refresh Quotes (Every 3 seconds)
+            # Only during trading hours or shortly after
+            if now.weekday() < 5 and (9 <= current_hour < 16):
+                try:
+                    stocks = await asyncio.to_thread(get_stock_quotes)
+                except Exception as e:
+                    pass
+                
+            # Task 3: Update Limit Up Pool (Every 30 seconds)
+            if current_timestamp - last_pool_update_time >= 30:
+                # Only during trading hours
+                if is_trading_time():
+                    await asyncio.to_thread(update_limit_up_pool_task)
+                    last_pool_update_time = current_timestamp
+
+            # Task 4: LHB Sync (Daily at 18:00)
+            if now.hour == 18 and now.minute == 0 and now.second < 10:
+                if lhb_manager.config['enabled'] and not lhb_manager.is_syncing:
+                    print(f"[{now}] Auto-starting LHB sync...")
+                    # Run in executor to avoid blocking loop
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, lhb_manager.fetch_and_update_data, lambda msg: asyncio.run(manager.broadcast(msg)))
+                    # Sleep to avoid multiple triggers
+                    await asyncio.sleep(60)
+
+            await asyncio.sleep(5) # Check every 5 seconds
+            
+        except Exception as e:
+            print(f"Scheduler loop crashed: {e}")
+            await asyncio.sleep(60) # Sleep and retry
 
 def thread_logger(msg):
     """线程安全的 logger"""
@@ -1052,27 +1074,5 @@ async def sync_lhb_data(background_tasks: BackgroundTasks):
 @app.get("/api/lhb/status")
 async def get_lhb_status():
     return {"is_syncing": lhb_manager.is_syncing}
-
-# --- Scheduler ---
-@app.on_event("startup")
-async def startup_event():
-    # Start background scheduler loop
-    asyncio.create_task(scheduler_loop())
-
-async def scheduler_loop():
-    """Simple scheduler to run tasks at specific times"""
-    while True:
-        now = datetime.now()
-        # Check for 18:00 daily sync
-        if now.hour == 18 and now.minute == 0 and now.second < 10:
-            if lhb_manager.config['enabled'] and not lhb_manager.is_syncing:
-                print(f"[{now}] Auto-starting LHB sync...")
-                # Run in executor to avoid blocking loop
-                loop = asyncio.get_event_loop()
-                loop.run_in_executor(None, lhb_manager.fetch_and_update_data, lambda msg: asyncio.run(manager.broadcast(msg)))
-                # Sleep to avoid multiple triggers
-                await asyncio.sleep(60)
-        
-        await asyncio.sleep(5) # Check every 5 seconds
 
 # Trigger reload for metrics update

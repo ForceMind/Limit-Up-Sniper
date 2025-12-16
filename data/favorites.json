@@ -1,5 +1,14 @@
 [
   {
+    "code": "sz000002",
+    "name": "手动添加",
+    "reason": "手动添加",
+    "strategy_type": "Manual",
+    "added_at": "2025-12-16 16:06:38",
+    "concept": "房地产开发",
+    "initial_score": 0
+  },
+  {
     "code": "sz002432",
     "name": "手动添加",
     "reason": "手动添加",
