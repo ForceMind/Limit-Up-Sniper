@@ -227,13 +227,22 @@ async def add_to_watchlist_api(code: str, name: str, reason: str = "手动添加
     # Try to preserve existing info if it was in AI list
     existing_info = watchlist_map.get(code, {})
     
+    concept = existing_info.get("concept", "")
+    # If concept is missing, try to fetch it
+    if not concept:
+        try:
+            info = await asyncio.to_thread(data_provider.fetch_stock_info, code)
+            concept = info.get('concept', '')
+        except:
+            pass
+
     new_item = {
         "code": code,
         "name": name,
         "reason": reason,
         "strategy_type": "Manual",
         "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "concept": existing_info.get("concept", ""),
+        "concept": concept,
         "initial_score": existing_info.get("initial_score", 0)
     }
     

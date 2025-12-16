@@ -41,6 +41,32 @@ class DataProvider:
         """Remove prefix"""
         return code.replace('sh', '').replace('sz', '').replace('bj', '')
 
+    def fetch_stock_info(self, code):
+        """
+        Fetch basic info (Industry/Concept) for a single stock.
+        """
+        try:
+            # Remove prefix for akshare
+            clean_code = self._strip_code(code)
+            df = ak.stock_individual_info_em(symbol=clean_code)
+            if df is None or df.empty:
+                return {}
+            
+            # df columns: item, value
+            info = {}
+            for _, row in df.iterrows():
+                if row['item'] == '行业':
+                    info['concept'] = row['value']
+                elif row['item'] == '总市值':
+                    info['total_mv'] = row['value']
+                elif row['item'] == '流通市值':
+                    info['circ_mv'] = row['value']
+            
+            return info
+        except Exception as e:
+            self.log(f"Error fetching stock info for {code}: {e}")
+            return {}
+
     def fetch_quotes(self, codes):
         """
         Fetch real-time quotes for a list of codes.
