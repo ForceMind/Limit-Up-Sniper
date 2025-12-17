@@ -528,7 +528,7 @@ def update_limit_up_pool_task():
             if 'concept' not in stock:
                 stock['concept'] = '-'
             if 'associated' not in stock:
-                stock['associated'] = '-'
+                stock['associated'] = stock.get('concept', '-')
             
             enriched_pool.append(stock)
             

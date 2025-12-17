@@ -522,6 +522,9 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     # 2. 构建大师级分析 Prompt
     current_ts_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
+    # Debug Log for User Verification
+    print(f"[AI Analysis] Code: {code}, Turnover: {turnover}, LHB: {lhb_text[:50]}...")
+
     if prompt_type == 'aggressive':
         prompt = f"""
 你是一位擅长竞价抢筹和超短线博弈的顶级游资。请针对股票【{name} ({code})】进行“竞价抢筹”维度的深度推演。

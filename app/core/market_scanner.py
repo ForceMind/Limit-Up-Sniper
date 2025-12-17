@@ -206,6 +206,22 @@ def scan_limit_up_pool(logger=None):
             else:
                 full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
             
+            # Calculate likely seats
+            likely_seats = []
+            try:
+                # Construct minimal data for matcher
+                stock_data_for_matcher = {
+                    'time': datetime.now(),
+                    'price_history': [], 
+                    'volume': 0, 
+                    'avg_volume': 1, 
+                    'market_cap': circ_mv,
+                    'limit_up_days': limit_days
+                }
+                likely_seats = matcher.match(stock_data_for_matcher)
+            except Exception as e:
+                if logger: logger(f"Error matching seats for {name}: {e}")
+
             found_stocks.append({
                 "code": full_code,
                 "name": name,
@@ -213,11 +229,13 @@ def scan_limit_up_pool(logger=None):
                 "change_percent": change_percent,
                 "time": formatted_time,
                 "concept": industry,
+                "associated": industry,
                 "reason": f"{limit_days}连板" if limit_days > 1 else "首板",
                 "strategy": "LimitUp",
                 "circulation_value": circ_mv,
                 "turnover": turnover,
-                "limit_up_days": limit_days
+                "limit_up_days": limit_days,
+                "likely_seats": likely_seats
             })
             
         return found_stocks
@@ -271,7 +289,7 @@ def scan_broken_limit_pool(logger=None):
                 "time": formatted_time, 
                 "high": high,
                 "concept": str(row['所属行业']),
-                "associated": "-",
+                "associated": str(row['所属行业']),
                 "amplitude": round(float(row['振幅']), 2) if '振幅' in row else 0,
                 "circulation_value": circ_mv,
                 "turnover": turnover
