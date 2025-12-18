@@ -424,6 +424,8 @@ class LHBManager:
                 return []
                 
             # Replace NaN with None to ensure valid JSON
+            # Must convert to object first, otherwise float columns might revert None to NaN
+            df_day = df_day.astype(object)
             df_day = df_day.where(pd.notnull(df_day), None)
             
             # Convert to list of dicts
