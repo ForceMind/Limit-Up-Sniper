@@ -22,8 +22,8 @@ class LHBManager:
     def __init__(self):
         self.config = {
             "enabled": False,
-            "days": 90,
-            "min_amount": 50000000, # 5000万
+            "days": 2,
+            "min_amount": 10000000, # 5000万
             "last_update": None
         }
         self.is_syncing = False
