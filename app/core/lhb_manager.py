@@ -23,7 +23,7 @@ class LHBManager:
         self.config = {
             "enabled": False,
             "days": 2,
-            "min_amount": 10000000, # 5000万
+            "min_amount": 10000000, # 1000万
             "last_update": None
         }
         self.is_syncing = False
@@ -174,15 +174,36 @@ class LHBManager:
                         stock_code = str(row['代码'])
                         stock_name = row['名称']
                         
+                        # [Modified] Filter: Only keep Main Board (00/60) and ChiNext (30)
+                        # Skip STAR (68) and BSE (8/4/9)
+                        if stock_code.startswith('68') or \
+                           stock_code.startswith('8') or \
+                           stock_code.startswith('4') or \
+                           stock_code.startswith('9'):
+                            # if logger: logger(f"  - 跳过非主板/创业板: {stock_name}({stock_code})")
+                            continue
+
                         # Fetch detail for this stock
                         try:
                             # stock_lhb_stock_detail_em (Get details for specific date)
                             # flag="买入" to get buy seats. We can also get "卖出" if needed.
                             detail_df = ak.stock_lhb_stock_detail_em(symbol=stock_code, date=date_str, flag="买入")
-                            if detail_df is None or detail_df.empty: 
+                            if detail_df is None or detail_df.empty:
                                 time.sleep(0.2)
                                 continue
                             
+                            # [Fix] Handle column names mismatch (akshare update or encoding issue)
+                            # Assuming standard structure: Index, Name, Buy, Buy%, Sell, Sell%, Net...
+                            if len(detail_df.columns) >= 5:
+                                # Rename critical columns by index
+                                # 1: Seat Name, 2: Buy Amount, 4: Sell Amount
+                                # Use rename to avoid SettingWithCopy warning on values
+                                new_cols = list(detail_df.columns)
+                                new_cols[1] = '营业部名称'
+                                new_cols[2] = '买入金额'
+                                new_cols[4] = '卖出金额'
+                                detail_df.columns = new_cols
+
                             # Filter seats
                             # Columns: 序号, 营业部名称, 买入金额, 卖出金额, 净买入金额...
                             # Use a lower threshold for individual seats (e.g. 10M) to capture more Hot Money
