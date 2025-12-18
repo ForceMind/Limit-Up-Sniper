@@ -47,8 +47,9 @@ class LHBManager:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
                     self.config.update(saved)
-            except:
-                pass
+                    print(f"[LHB] Config loaded: {self.config}")
+            except Exception as e:
+                print(f"[LHB] Error loading config: {e}")
 
     def save_config(self):
         config_path = DATA_DIR / "lhb_config.json"
@@ -56,6 +57,7 @@ class LHBManager:
             json.dump(self.config, f, indent=2)
 
     def update_settings(self, enabled, days, min_amount):
+        print(f"[LHB] Updating settings: enabled={enabled}, days={days}, min_amount={min_amount}")
         self.config['enabled'] = enabled
         self.config['days'] = days
         self.config['min_amount'] = min_amount
@@ -71,6 +73,9 @@ class LHBManager:
         if self.is_syncing:
             if logger: logger("[LHB] 同步任务正在进行中，请勿重复操作。")
             return
+
+        # Always reload config before sync to ensure we have latest settings (e.g. from other workers)
+        self.load_config()
 
         if not self.config['enabled']:
             if logger: logger("[LHB] 龙虎榜功能未开启，跳过更新。")
@@ -125,8 +130,19 @@ class LHBManager:
                 # Check if we already have data for this date (Optimization)
                 # But user said "if manual range covers missing data, fetch it"
                 # So we should check if this date exists in our CSV
-                if not existing_df.empty and date_obj in existing_df['trade_date'].values:
-                    continue
+                if not existing_df.empty:
+                    # Robust check: convert both to string YYYY-MM-DD
+                    # existing_df['trade_date'] contains date objects
+                    existing_dates = set()
+                    for d in existing_df['trade_date'].tolist():
+                         if hasattr(d, 'strftime'):
+                             existing_dates.add(d.strftime('%Y-%m-%d'))
+                         else:
+                             existing_dates.add(str(d))
+                    
+                    if date_iso in existing_dates:
+                        # print(f"Skipping {date_iso}, already exists.")
+                        continue
 
                 if logger: logger(f"[LHB] 正在抓取 {date_iso} 龙虎榜数据...")
                 

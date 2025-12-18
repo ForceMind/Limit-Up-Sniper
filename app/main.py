@@ -1055,6 +1055,7 @@ class LHBConfigRequest(BaseModel):
 
 @app.get("/api/lhb/config")
 async def get_lhb_config():
+    lhb_manager.load_config()
     return lhb_manager.config
 
 @app.post("/api/lhb/config")
