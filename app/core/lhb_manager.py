@@ -150,7 +150,12 @@ class LHBManager:
                     # akshare: stock_lhb_detail_em (东方财富)
                     lhb_df = ak.stock_lhb_detail_em(start_date=date_str, end_date=date_str)
                     if lhb_df is None or lhb_df.empty:
+                        if logger: logger(f"  - akshare returned empty for {date_str}")
                         continue
+                    
+                    # Debug columns
+                    if logger: logger(f"  - Columns: {lhb_df.columns.tolist()}")
+                    if logger: logger(f"  - First row: {lhb_df.iloc[0].to_dict()}")
                     
                     # Filter by buy amount
                     # Columns: 序号, 代码, 名称, 解读, 收盘价, 涨跌幅, 龙虎榜净买额, 龙虎榜买入额, 龙虎榜卖出额, 换手率, 市场总成交额, 上榜原因
@@ -223,8 +228,8 @@ class LHBManager:
                                 })
                                 
                         except Exception as e:
-                            # print(f"Error fetching detail for {stock_code}: {e}")
-                            pass
+                            if logger: logger(f"  ! Error fetching detail for {stock_code}: {e}")
+                            # pass
                         
                         # Sleep between stocks to avoid ban
                         time.sleep(random.uniform(0.3, 0.8))

@@ -63,9 +63,9 @@
         </header>
 
         <!-- Main Content -->
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
             <!-- Left: Stock List -->
-            <div class="flex-1 flex flex-col min-w-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+            <div class="flex-1 flex flex-col min-w-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 h-full">
                 <!-- Toolbar/Stats -->
                 <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center text-sm">
                     <span class="font-bold">上榜个股 ({{ lhbData.length }})</span>
@@ -116,17 +116,25 @@
             </div>
 
             <!-- Right: Analysis Panel -->
-            <div class="w-1/3 min-w-[400px] flex flex-col border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl z-20 transition-all duration-300"
-                 :class="{'translate-x-full absolute right-0 h-full': !showAnalysisPanel && !analysisResult, 'relative translate-x-0': showAnalysisPanel || analysisResult}">
+            <div class="fixed inset-0 md:relative md:inset-auto md:w-1/3 md:min-w-[400px] flex flex-col border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl z-30 transition-all duration-300 transform"
+                 :class="{'translate-x-full md:translate-x-0': !showAnalysisPanel && isMobile, 'translate-x-0': showAnalysisPanel || !isMobile}">
                 
                 <div class="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                     <h2 class="font-bold text-lg text-purple-600 dark:text-purple-400 flex items-center gap-2">
                         🤖 AI 深度复盘日报
                     </h2>
-                    <span class="text-xs text-gray-500">{{ selectedDate }}</span>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-gray-500">{{ selectedDate }}</span>
+                        <!-- Close Button (Mobile Only) -->
+                        <button @click="showAnalysisPanel = false" class="md:hidden text-gray-500 hover:text-gray-700 dark:text-gray-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-6 text-sm leading-relaxed text-gray-800 dark:text-gray-200 relative">
+                <div class="flex-1 overflow-y-auto p-6 text-sm leading-relaxed text-gray-800 dark:text-gray-200 relative bg-gray-50 dark:bg-gray-900">
                     <div v-if="analyzing" class="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
                         <div class="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
                         <p class="text-purple-600 font-bold animate-pulse">AI 正在阅读榜单数据...</p>
@@ -160,8 +168,9 @@
                     loading: false,
                     analyzing: false,
                     analysisResult: '',
-                    showAnalysisPanel: true,
-                    isDark: false
+                    showAnalysisPanel: false, // Default hidden on mobile
+                    isDark: false,
+                    isMobile: window.innerWidth < 768
                 }
             },
             computed: {
@@ -238,6 +247,10 @@
                     this.isDark = true;
                 }
                 
+                window.addEventListener('resize', () => {
+                    this.isMobile = window.innerWidth < 768;
+                });
+
                 this.fetchDates();
             }
         }).mount('#app')
