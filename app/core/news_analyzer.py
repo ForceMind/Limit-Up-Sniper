@@ -508,6 +508,31 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     if lhb_info:
         lhb_text = f"日期: {lhb_info['date']}, 席位: {', '.join(lhb_info['seats'])}"
 
+    # [Request 4] Get K-Line Data (1-min) for context
+    kline_summary = "暂无分时数据"
+    try:
+        target_date = lhb_info['date'] if lhb_info else datetime.now().strftime('%Y-%m-%d')
+        kline_df = lhb_manager.get_kline_1min(code, target_date)
+        
+        if kline_df is not None and not kline_df.empty:
+            # Simple feature extraction
+            # Assuming cols: 日期, 开盘, 收盘, 最高, 最低, 成交量...
+            # akshare cols: 时间, 开盘, 收盘, 最高, 最低, 成交量...
+            # Let's just take OHLC of the day
+            open_p = kline_df.iloc[0]['开盘']
+            close_p = kline_df.iloc[-1]['收盘']
+            high_p = kline_df['最高'].max()
+            low_p = kline_df['最低'].min()
+            
+            kline_summary = f"分时: 开{open_p} 收{close_p} 高{high_p} 低{low_p}。"
+            
+            if close_p > open_p:
+                kline_summary += " 全天震荡走高。"
+            else:
+                kline_summary += " 冲高回落。"
+    except:
+        pass
+
     # 1. 尝试获取该股票的最新新闻 (模拟搜索)
     # 这里简单复用 get_cls_news 的逻辑，但针对特定关键词过滤
     # 实际生产中应该调用搜索引擎API或专门的新闻接口
@@ -536,6 +561,7 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - 流通市值: {circ_value}
 - 概念: {concept}
 - 龙虎榜数据: {lhb_text}
+- 分时形态: {kline_summary}
 - 历史指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【核心分析逻辑】
@@ -573,6 +599,7 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 - 流通市值: {circ_value}
 - 概念: {concept}
 - 龙虎榜数据: {lhb_text}
+- 分时形态: {kline_summary}
 - 连板高度/指标: {json.dumps(stock_data.get('metrics', {}), ensure_ascii=False)}
 
 【分析逻辑】
@@ -990,6 +1017,40 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
         
     final_list = list(current_watchlist.values())
     
+    # [Request 3] Integrate LHB Data into Watchlist
+    try:
+        # Get latest LHB date
+        lhb_dates = lhb_manager.get_available_dates()
+        if lhb_dates:
+            latest_lhb_date = lhb_dates[0]
+            # Fetch data
+            lhb_data = lhb_manager.get_daily_data(latest_lhb_date)
+            # Map code -> simple summary
+            lhb_map = {}
+            for stock in lhb_data:
+                # Extract Top Hot Money
+                hms = [s['hot_money'] for s in stock['seats'] if s['hot_money']]
+                
+                desc = ""
+                if hms:
+                    desc = f"游资:{','.join(hms[:2])}"
+                elif stock['total_net_buy'] > 50000000:
+                    desc = "机构/大额买入"
+                elif '机构专用' in [s['name'] for s in stock['seats']]:
+                    desc = "机构榜"
+                
+                if desc:
+                    lhb_map[stock['code']] = f"[LHB:{desc}]"
+            
+            # Apply to final_list
+            for item in final_list:
+                if item['code'] in lhb_map:
+                    tag = lhb_map[item['code']]
+                    if tag not in item.get('news_summary', ''):
+                        item['news_summary'] = f"{tag} {item.get('news_summary', '')}"
+    except Exception as e:
+        if logger: logger(f"[!] LHB integration failed: {e}")
+
     # [Request 4] Batch fetch turnover for all stocks
     try:
         from app.core.data_provider import data_provider
