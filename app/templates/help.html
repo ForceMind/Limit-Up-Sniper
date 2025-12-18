@@ -94,32 +94,77 @@
                 </div>
             </section>
 
-            <!-- 2. AI 分析说明 -->
+            <!-- 2. 龙虎榜指挥中心 (New) -->
             <section class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
                 <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <span>🤖</span> AI 深度分析使用指南
+                    <span>🐉</span> 龙虎榜指挥中心
                 </h2>
                 <div class="prose dark:prose-invert max-w-none text-sm">
                     <p>
-                        本系统集成了 DeepSeek 大模型，针对不同的股票列表，AI 会自动切换不同的“分析师人格”：
+                        全新的龙虎榜数据分析模块，集成了数据采集、历史回溯与 AI 深度复盘功能。
                     </p>
-                    <div class="grid md:grid-cols-3 gap-4 my-4">
-                        <div class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-100 dark:border-purple-800">
-                            <div class="font-bold text-purple-600 dark:text-purple-400">竞价列表</div>
-                            <div class="text-xs mt-1">AI 侧重分析<strong>情绪博弈</strong>、<strong>预期差</strong>和<strong>竞价抢筹逻辑</strong>。</div>
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>历史回溯：</strong> 支持查看任意历史日期的龙虎榜详情，包括上榜个股、净买入金额及核心席位。</li>
+                        <li><strong>智能过滤：</strong> 自动过滤科创板/北交所数据，专注于主板和创业板的核心博弈。</li>
+                        <li><strong>AI 深度复盘：</strong>
+                            <span class="text-purple-600 dark:text-purple-400 font-bold">🤖 独家功能</span>
+                            点击“AI 复盘”按钮，AI 将阅读当日所有上榜数据，生成一份包含市场情绪定性、活跃游资点评及核心个股主力意图的深度研报。
+                        </li>
+                        <li><strong>数据备份：</strong> 提供一键打包下载所有历史数据的功能，方便数据迁移。</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 3. AI 分析体系详解 -->
+            <section class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>🤖</span> AI 分析体系详解
+                </h2>
+                <div class="prose dark:prose-invert max-w-none text-sm">
+                    <p>
+                        本系统根据不同的交易场景，内置了多套 AI 分析逻辑（Prompt），AI 会根据上下文自动切换“分析师人格”：
+                    </p>
+                    <div class="grid md:grid-cols-2 gap-6 my-4">
+                        <div class="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
+                            <h4 class="font-bold text-purple-600 dark:text-purple-400 mb-2">1. 竞价抢筹 (Aggressive)</h4>
+                            <ul class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                <li><strong>触发场景：</strong> 竞价列表个股分析</li>
+                                <li><strong>AI 人格：</strong> 顶级游资/超短选手</li>
+                                <li><strong>分析重点：</strong> 弱转强预期、竞价量能、情绪博弈、分时形态（结合1分钟K线）。</li>
+                                <li><strong>输出目标：</strong> 判断开盘是否值得直接“抢筹”。</li>
+                            </ul>
                         </div>
-                        <div class="p-3 bg-red-50 dark:bg-red-900/20 rounded border border-red-100 dark:border-red-800">
-                            <div class="font-bold text-red-600 dark:text-red-400">盘中/涨停列表</div>
-                            <div class="text-xs mt-1">AI 侧重分析<strong>封板质量</strong>、<strong>板块地位</strong>和<strong>明日接力策略</strong>。</div>
+                        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800">
+                            <h4 class="font-bold text-red-600 dark:text-red-400 mb-2">2. 打板接力 (LimitUp)</h4>
+                            <ul class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                <li><strong>触发场景：</strong> 涨停/盘中列表个股分析</li>
+                                <li><strong>AI 人格：</strong> 职业打板客</li>
+                                <li><strong>分析重点：</strong> 封板质量、板块地位、主力性质（游资vs机构）、明日溢价预期。</li>
+                                <li><strong>输出目标：</strong> 判断是否适合“打板”或“排板”。</li>
+                            </ul>
                         </div>
-                        <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-100 dark:border-blue-800">
-                            <div class="font-bold text-blue-600 dark:text-blue-400">自选列表</div>
-                            <div class="text-xs mt-1">AI 侧重分析<strong>基本面</strong>、<strong>技术趋势</strong>和<strong>中线价值</strong>。</div>
+                        <div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                            <h4 class="font-bold text-blue-600 dark:text-blue-400 mb-2">3. 稳健趋势 (Manual)</h4>
+                            <ul class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                <li><strong>触发场景：</strong> 自选股分析</li>
+                                <li><strong>AI 人格：</strong> 基本面研究员/波段交易者</li>
+                                <li><strong>分析重点：</strong> 公司基本面、行业逻辑、技术趋势、中线资金流向。</li>
+                                <li><strong>输出目标：</strong> 提供中短线波段操作建议。</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800">
+                            <h4 class="font-bold text-green-600 dark:text-green-400 mb-2">4. 龙虎榜日报 (LHB Daily)</h4>
+                            <ul class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                <li><strong>触发场景：</strong> 龙虎榜指挥中心 -> AI复盘</li>
+                                <li><strong>AI 人格：</strong> 资深市场分析师</li>
+                                <li><strong>分析重点：</strong> 全市场情绪定性、活跃游资风格点评、机构动向、明日题材风向。</li>
+                                <li><strong>输出目标：</strong> 宏观把控市场节奏。</li>
+                            </ul>
                         </div>
                     </div>
-                    <p>
-                        <strong>如何使用：</strong> 点击任意股票卡片上的 <span class="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded text-xs">🤖</span> 按钮即可触发分析。分析结果会自动缓存 10 分钟，避免重复消耗 Token。
-                    </p>
+                    <div class="bg-gray-100 dark:bg-gray-900 p-3 rounded text-xs text-gray-500">
+                        * 注：所有 AI 分析均会自动结合最新的盘面数据（价格、成交量、分时走势）和新闻舆情进行综合判断。
+                    </div>
                 </div>
             </section>
 
