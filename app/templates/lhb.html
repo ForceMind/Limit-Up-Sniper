@@ -116,10 +116,10 @@
             </div>
 
             <!-- Right: Analysis Panel -->
-            <div class="fixed inset-0 md:relative md:inset-auto md:w-1/3 md:min-w-[400px] flex flex-col border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl z-30 transition-all duration-300 transform"
-                 :class="{'translate-x-full md:translate-x-0': !showAnalysisPanel && isMobile, 'translate-x-0': showAnalysisPanel || !isMobile}">
+            <div class="fixed inset-0 md:relative md:inset-auto md:w-1/3 md:min-w-[400px] flex flex-col border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl z-30 transition-transform duration-300 transform"
+                 :class="isMobile ? (showAnalysisPanel ? 'translate-x-0' : 'translate-x-full') : 'translate-x-0'">
                 
-                <div class="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <div class="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center shrink-0">
                     <h2 class="font-bold text-lg text-purple-600 dark:text-purple-400 flex items-center gap-2">
                         🤖 AI 深度复盘日报
                     </h2>
@@ -197,14 +197,14 @@
                     this.analysisResult = ''; // Clear previous analysis
                     try {
                         const res = await fetch(`/api/lhb/history?date=${this.selectedDate}`);
+                        if (!res.ok) {
+                            throw new Error(`Server Error: ${res.status} ${res.statusText}`);
+                        }
                         this.lhbData = await res.json();
-                        
-                        // Check if we have cached analysis for this date? 
-                        // Currently backend doesn't expose an endpoint to check cache only, 
-                        // but we can try to "analyze" which hits cache first.
-                        // For now, let user click button.
                     } catch (e) {
                         console.error(e);
+                        // Show error in UI instead of alert? For now log is enough, data will be empty.
+                        this.lhbData = [];
                     } finally {
                         this.loading = false;
                     }

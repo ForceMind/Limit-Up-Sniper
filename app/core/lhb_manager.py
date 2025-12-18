@@ -423,6 +423,9 @@ class LHBManager:
             if df_day.empty:
                 return []
                 
+            # Replace NaN with None to ensure valid JSON
+            df_day = df_day.where(pd.notnull(df_day), None)
+            
             # Convert to list of dicts
             records = df_day.to_dict('records')
             
