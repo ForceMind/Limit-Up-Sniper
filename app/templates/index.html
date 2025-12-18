@@ -64,9 +64,9 @@
                     <div class="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
                     <h1 class="text-lg md:text-xl font-bold tracking-wider text-red-600 dark:text-red-500">涨停狙击手 <span class="hidden md:inline text-xs text-gray-500 ml-2">指挥中心</span></h1>
                     
-                    <!-- LHB Button (Desktop) -->
-                    <a href="/lhb" class="hidden md:flex items-center gap-1 text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded border border-red-200 dark:border-red-800 transition-colors ml-4" title="查看龙虎榜详情与AI复盘">
-                        <span>🐲</span> 龙虎榜
+                    <!-- LHB Button (Universal) -->
+                    <a href="/lhb" class="flex items-center gap-1 text-[10px] md:text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 bg-red-50 dark:bg-red-900/30 px-2 md:px-3 py-1 rounded border border-red-200 dark:border-red-800 transition-colors ml-2 md:ml-4 shrink-0" title="查看龙虎榜详情与AI复盘">
+                        <span>🐲</span> <span class="hidden md:inline">龙虎榜</span><span class="md:hidden">龙虎榜</span>
                     </a>
                 </div>
                 <!-- Mobile Tab Switcher -->
@@ -75,7 +75,6 @@
                     <button @click="activeTab = 'pool'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'pool' ? 'bg-yellow-600 text-white' : 'text-gray-500 dark:text-gray-400'">涨停</button>
                     <button @click="activeTab = 'intra'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'intra' ? 'bg-red-600 text-white' : 'text-gray-500 dark:text-gray-400'">盘中</button>
                     <button @click="activeTab = 'manual'" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap" :class="activeTab === 'manual' ? 'bg-blue-600 text-white' : 'text-gray-500 dark:text-gray-400'">自选</button>
-                    <a href="/lhb" class="px-2 py-1 text-xs rounded transition-colors whitespace-nowrap text-red-600 dark:text-red-400 font-bold flex items-center">🐲 榜</a>
                 </div>
             </div>
             
