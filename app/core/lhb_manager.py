@@ -418,15 +418,22 @@ class LHBManager:
             df = pd.read_csv(LHB_FILE)
             # Ensure trade_date is string
             df['trade_date'] = df['trade_date'].astype(str)
-            df_day = df[df['trade_date'] == date_str]
+            df_day = df[df['trade_date'] == date_str].copy()
             
             if df_day.empty:
                 return []
                 
-            # Replace NaN with None to ensure valid JSON
-            # Must convert to object first, otherwise float columns might revert None to NaN
-            df_day = df_day.astype(object)
-            df_day = df_day.where(pd.notnull(df_day), None)
+            # Handle numeric columns - fill NaN with 0 for calculation safety
+            numeric_cols = ['buy_amount', 'sell_amount']
+            for col in numeric_cols:
+                if col in df_day.columns:
+                    df_day[col] = df_day[col].fillna(0)
+            
+            # Handle string columns - fill NaN with empty string
+            str_cols = ['hot_money', 'buyer_seat_name', 'stock_name', 'stock_code']
+            for col in str_cols:
+                if col in df_day.columns:
+                    df_day[col] = df_day[col].fillna("")
             
             # Convert to list of dicts
             records = df_day.to_dict('records')
