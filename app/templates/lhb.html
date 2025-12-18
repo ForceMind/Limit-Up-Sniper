@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>龙虎榜指挥中心 - 涨停狙击手</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            font-weight: bold; margin-top: 1em; margin-bottom: 0.5em;
+        }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5em; }
+        .markdown-content strong { color: #dc2626; }
+        html.dark .markdown-content strong { color: #f87171; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono h-screen flex flex-col overflow-hidden transition-colors duration-300">
+    <div id="app" class="flex flex-col h-full">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 flex justify-between items-center shrink-0 shadow-sm z-10">
+            <div class="flex items-center gap-4">
+                <a href="/" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </a>
+                <h1 class="text-xl font-bold text-red-600 dark:text-red-500 flex items-center gap-2">
+                    <span>🐉</span> 龙虎榜指挥中心
+                </h1>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Date Selector -->
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-500">日期:</label>
+                    <select v-model="selectedDate" @change="fetchData" class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                        <option v-for="date in availableDates" :key="date" :value="date">{{ date }}</option>
+                    </select>
+                </div>
+
+                <button @click="analyzeDaily" :disabled="analyzing" 
+                        class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded shadow transition-colors flex items-center gap-2 disabled:opacity-50">
+                    <span v-if="analyzing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>{{ analyzing ? 'AI 分析中...' : '🤖 AI 深度复盘' }}</span>
+                </button>
+                
+                <a href="/api/data/backup" target="_blank" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded shadow transition-colors flex items-center gap-2" title="下载所有数据备份">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>数据备份</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left: Stock List -->
+            <div class="flex-1 flex flex-col min-w-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+                <!-- Toolbar/Stats -->
+                <div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center text-sm">
+                    <span class="font-bold">上榜个股 ({{ lhbData.length }})</span>
+                    <div class="flex gap-4 text-gray-500">
+                        <span>净买入>0: <span class="text-red-500 font-bold">{{ netBuyPositiveCount }}</span></span>
+                        <span>净卖出: <span class="text-green-500 font-bold">{{ lhbData.length - netBuyPositiveCount }}</span></span>
+                    </div>
+                </div>
+                
+                <!-- Table Header -->
+                <div class="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-bold text-gray-500 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900">
+                    <div class="col-span-2">代码/名称</div>
+                    <div class="col-span-2 text-right">净买入(万)</div>
+                    <div class="col-span-8">核心席位 (前3买入)</div>
+                </div>
+
+                <!-- List -->
+                <div class="flex-1 overflow-y-auto p-0">
+                    <div v-if="loading" class="flex justify-center py-10">
+                        <div class="w-8 h-8 border-4 border-gray-300 border-t-red-500 rounded-full animate-spin"></div>
+                    </div>
+                    <div v-else-if="lhbData.length === 0" class="text-center py-10 text-gray-500">
+                        暂无数据，请选择其他日期或等待同步。
+                    </div>
+                    
+                    <div v-for="stock in lhbData" :key="stock.code" 
+                         class="grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors items-center group cursor-pointer"
+                         @click="showDetails(stock)">
+                        <div class="col-span-2 flex flex-col">
+                            <span class="font-bold text-sm text-gray-900 dark:text-gray-100">{{ stock.name }}</span>
+                            <span class="text-xs text-gray-500">{{ stock.code }}</span>
+                        </div>
+                        <div class="col-span-2 text-right font-mono font-bold" :class="stock.total_net_buy > 0 ? 'text-red-600' : 'text-green-600'">
+                            {{ (stock.total_net_buy / 10000).toFixed(0) }}
+                        </div>
+                        <div class="col-span-8 flex flex-wrap gap-2 text-xs">
+                            <span v-for="seat in stock.seats.slice(0, 3)" :key="seat.name" 
+                                  class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 flex items-center gap-1"
+                                  :class="{'ring-1 ring-red-400 bg-red-50 dark:bg-red-900/20': seat.hot_money}">
+                                <span v-if="seat.hot_money" class="text-red-500 font-bold">★ {{ seat.hot_money }}</span>
+                                <span class="truncate max-w-[120px]" :title="seat.name">{{ seat.name.replace(/(证券|股份|有限|公司|营业部)/g, '') }}</span>
+                                <span class="font-mono" :class="seat.buy > 0 ? 'text-red-500' : ''">{{ (seat.buy/10000).toFixed(0) }}</span>
+                            </span>
+                            <span v-if="stock.seats.length > 3" class="text-gray-400 self-center">...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Analysis Panel -->
+            <div class="w-1/3 min-w-[400px] flex flex-col border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shadow-xl z-20 transition-all duration-300"
+                 :class="{'translate-x-full absolute right-0 h-full': !showAnalysisPanel && !analysisResult, 'relative translate-x-0': showAnalysisPanel || analysisResult}">
+                
+                <div class="p-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                    <h2 class="font-bold text-lg text-purple-600 dark:text-purple-400 flex items-center gap-2">
+                        🤖 AI 深度复盘日报
+                    </h2>
+                    <span class="text-xs text-gray-500">{{ selectedDate }}</span>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-6 text-sm leading-relaxed text-gray-800 dark:text-gray-200 relative">
+                    <div v-if="analyzing" class="absolute inset-0 flex flex-col items-center justify-center bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm">
+                        <div class="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-purple-600 font-bold animate-pulse">AI 正在阅读榜单数据...</p>
+                    </div>
+                    
+                    <div v-if="!analysisResult && !analyzing" class="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        <p>点击上方“AI 深度复盘”生成今日报告</p>
+                    </div>
+
+                    <div v-if="analysisResult" v-html="renderMarkdown(analysisResult)" class="markdown-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    availableDates: [],
+                    selectedDate: '',
+                    lhbData: [],
+                    loading: false,
+                    analyzing: false,
+                    analysisResult: '',
+                    showAnalysisPanel: true,
+                    isDark: false
+                }
+            },
+            computed: {
+                netBuyPositiveCount() {
+                    return this.lhbData.filter(s => s.total_net_buy > 0).length;
+                }
+            },
+            methods: {
+                async fetchDates() {
+                    try {
+                        const res = await fetch('/api/lhb/dates');
+                        this.availableDates = await res.json();
+                        if (this.availableDates.length > 0) {
+                            this.selectedDate = this.availableDates[0];
+                            this.fetchData();
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+                async fetchData() {
+                    if (!this.selectedDate) return;
+                    this.loading = true;
+                    this.analysisResult = ''; // Clear previous analysis
+                    try {
+                        const res = await fetch(`/api/lhb/history?date=${this.selectedDate}`);
+                        this.lhbData = await res.json();
+                        
+                        // Check if we have cached analysis for this date? 
+                        // Currently backend doesn't expose an endpoint to check cache only, 
+                        // but we can try to "analyze" which hits cache first.
+                        // For now, let user click button.
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async analyzeDaily() {
+                    if (!this.selectedDate) return;
+                    this.analyzing = true;
+                    this.showAnalysisPanel = true;
+                    try {
+                        const res = await fetch('/api/lhb/analyze_daily', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ date: this.selectedDate })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'ok') {
+                            this.analysisResult = data.analysis;
+                        } else {
+                            this.analysisResult = '分析失败: ' + data.message;
+                        }
+                    } catch (e) {
+                        this.analysisResult = '请求异常: ' + e.message;
+                    } finally {
+                        this.analyzing = false;
+                    }
+                },
+                renderMarkdown(text) {
+                    if (!text) return '';
+                    return marked.parse(text);
+                },
+                showDetails(stock) {
+                    // Future: Show modal with full seat list
+                    console.log(stock);
+                }
+            },
+            mounted() {
+                // Theme check
+                if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark');
+                    this.isDark = true;
+                }
+                
+                this.fetchDates();
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

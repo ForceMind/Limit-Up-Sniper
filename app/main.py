@@ -1,17 +1,18 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import json
 import os
+import shutil
 import asyncio
 import time
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
-from app.core.news_analyzer import generate_watchlist, analyze_single_stock
+from app.core.news_analyzer import generate_watchlist, analyze_single_stock, analyze_daily_lhb
 from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, get_market_overview
 from app.core.stock_utils import calculate_metrics, is_trading_time, is_market_open_day
 from app.core.data_provider import data_provider
@@ -1075,5 +1076,65 @@ async def sync_lhb_data(background_tasks: BackgroundTasks):
 @app.get("/api/lhb/status")
 async def get_lhb_status():
     return {"is_syncing": lhb_manager.is_syncing}
+
+@app.get("/lhb", response_class=HTMLResponse)
+async def read_lhb_page(request: Request):
+    return templates.TemplateResponse("lhb.html", {"request": request})
+
+@app.get("/api/lhb/dates")
+async def get_lhb_dates():
+    return lhb_manager.get_available_dates()
+
+@app.get("/api/lhb/history")
+async def get_lhb_history(date: str):
+    return lhb_manager.get_daily_data(date)
+
+class LHBAnalyzeRequest(BaseModel):
+    date: str
+
+@app.post("/api/lhb/analyze_daily")
+async def analyze_lhb_daily_api(req: LHBAnalyzeRequest):
+    # Run in thread pool
+    loop = asyncio.get_event_loop()
+    # Fetch data first
+    data = lhb_manager.get_daily_data(req.date)
+    result = await loop.run_in_executor(None, lambda: analyze_daily_lhb(req.date, data))
+    return {"status": "ok", "analysis": result}
+
+@app.get("/api/data/backup")
+async def download_data_backup():
+    """
+    Pack 'data' directory into a zip file and return for download
+    """
+    try:
+        # Create a zip file in a temporary location or memory?
+        # shutil.make_archive creates a file on disk.
+        # We can create it in parent dir, stream it, then delete it.
+        
+        base_name = BASE_DIR / "backup_data"
+        root_dir = BASE_DIR / "data"
+        
+        if not root_dir.exists():
+            return {"status": "error", "message": "Data directory not found"}
+            
+        # This creates backup_data.zip
+        zip_path = shutil.make_archive(str(base_name), 'zip', str(root_dir))
+        
+        filename = f"sniper_data_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        
+        def iterfile():
+            with open(zip_path, mode="rb") as file_like:
+                yield from file_like
+            # Clean up after streaming?
+            # StreamingResponse background task can handle cleanup
+            os.remove(zip_path)
+
+        return StreamingResponse(
+            iterfile(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # Trigger reload for metrics update

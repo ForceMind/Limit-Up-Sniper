@@ -381,6 +381,71 @@ class LHBManager:
             print(f"Error getting LHB info: {e}")
             return None
 
+    def get_daily_data(self, date_str):
+        """
+        Get all LHB records for a specific date.
+        """
+        if not LHB_FILE.exists():
+            return []
+            
+        try:
+            df = pd.read_csv(LHB_FILE)
+            # Ensure trade_date is string
+            df['trade_date'] = df['trade_date'].astype(str)
+            df_day = df[df['trade_date'] == date_str]
+            
+            if df_day.empty:
+                return []
+                
+            # Convert to list of dicts
+            records = df_day.to_dict('records')
+            
+            # Group by stock
+            grouped = {}
+            for row in records:
+                code = str(row['stock_code'])
+                if code not in grouped:
+                    grouped[code] = {
+                        "code": code,
+                        "name": row['stock_name'],
+                        "seats": []
+                    }
+                grouped[code]['seats'].append({
+                    "name": row['buyer_seat_name'],
+                    "buy": row['buy_amount'],
+                    "sell": row['sell_amount'],
+                    "hot_money": row['hot_money'] if pd.notna(row['hot_money']) else ""
+                })
+            
+            # Convert grouped dict to list
+            result = list(grouped.values())
+            
+            # Sort seats by buy amount desc for each stock
+            for stock in result:
+                stock['seats'].sort(key=lambda x: x['buy'], reverse=True)
+                
+                # Calculate total net buy for sorting stocks
+                total_net = sum(s['buy'] - s['sell'] for s in stock['seats'])
+                stock['total_net_buy'] = total_net
+                
+            # Sort stocks by total net buy
+            result.sort(key=lambda x: x['total_net_buy'], reverse=True)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error getting daily data: {e}")
+            return []
+
+    def get_available_dates(self):
+        """Get list of dates that have data"""
+        if not LHB_FILE.exists(): return []
+        try:
+            df = pd.read_csv(LHB_FILE)
+            return sorted(df['trade_date'].astype(str).unique().tolist(), reverse=True)
+        except:
+            return []
+
     def generate_daily_report(self, date_str, logger=None):
         """
         Generate a summary report for a specific date.

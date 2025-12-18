@@ -1049,5 +1049,110 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
     print(msg)
     if logger: logger(msg)
 
+def analyze_daily_lhb(date_str, lhb_data, logger=None):
+    """
+    AI 深度分析龙虎榜日报
+    """
+    if not lhb_data:
+        return "当日无龙虎榜数据，无法分析。"
+        
+    # Check Cache
+    cache_key = f"lhb_daily_analysis_{date_str}"
+    cached = ai_cache.get(cache_key)
+    if cached:
+        return cached
+
+    # 1. 预处理数据，精简 Prompt
+    # 统计活跃游资
+    hot_money_act = {}
+    # 统计板块 (这里没有板块数据，只能靠AI知识或后续补充，先忽略或基于名字猜)
+    
+    summary_lines = []
+    
+    # Sort stocks by total buy amount (approx) or net buy
+    # lhb_data is list of dicts from lhb_manager.get_daily_data
+    # Structure: [{'code':..., 'name':..., 'seats': [{'name':..., 'buy':..., 'hot_money':...}]}]
+    
+    # Calculate net buy for sorting
+    for stock in lhb_data:
+        net = sum(s['buy'] - s['sell'] for s in stock['seats'])
+        stock['net_buy'] = net
+        
+    # Top 10 Net Buy
+    top_stocks = sorted(lhb_data, key=lambda x: x['net_buy'], reverse=True)[:10]
+    
+    summary_lines.append(f"【{date_str} 龙虎榜精选数据】")
+    
+    for stock in top_stocks:
+        seats_desc = []
+        for s in stock['seats']:
+            # Only show big seats (>1000万) or Hot Money
+            if s['buy'] > 10000000 or s['hot_money']:
+                hm = f"[{s['hot_money']}]" if s['hot_money'] else ""
+                seats_desc.append(f"{s['name']}{hm}(买{int(s['buy']/10000)}万)")
+                
+                # Count hot money stats
+                if s['hot_money']:
+                    if s['hot_money'] not in hot_money_act:
+                        hot_money_act[s['hot_money']] = []
+                    hot_money_act[s['hot_money']].append(f"{stock['name']}")
+                    
+        if seats_desc:
+            summary_lines.append(f"- {stock['name']}({stock['code']}): 净买入{int(stock['net_buy']/10000)}万。主力: {'; '.join(seats_desc)}")
+
+    # Add Hot Money Summary
+    summary_lines.append("\n【活跃游资统计】")
+    sorted_hm = sorted(hot_money_act.items(), key=lambda x: len(x[1]), reverse=True)
+    for name, stocks in sorted_hm[:5]:
+        summary_lines.append(f"- {name}: 参与 {len(stocks)} 只 ({', '.join(stocks)})")
+
+    prompt_content = "\n".join(summary_lines)
+    
+    system_prompt = f"""
+你是一位资深的A股龙虎榜分析师。请根据提供的龙虎榜数据，撰写一份【{date_str} 龙虎榜深度复盘】。
+
+【分析数据】
+{prompt_content}
+
+【分析要求】
+1. **市场情绪定性**: 基于大额榜单和游资出手力度，判断今日情绪是冰点、回暖还是高潮？
+2. **游资风格点评**: 哪些知名游资（如章盟主、呼家楼等）在主导行情？他们的风格是锁仓还是一日游？
+3. **核心个股逻辑**: 挑选 2-3 只最具代表性的个股，分析主力资金意图（是机构抱团还是游资接力）。
+4. **明日推演**: 资金在大举进攻哪个方向？明日应该关注什么？
+
+【输出格式】
+请以 Markdown 格式输出，包含以下章节：
+### 1. 情绪与游资综述
+### 2. 核心席位大解密
+### 3. 明日风向标
+"""
+
+    # Call AI
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": system_prompt}
+        ],
+        "temperature": 0.3
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+    }
+    
+    try:
+        if logger: logger(f"[*] 正在生成龙虎榜日报分析 ({date_str})...")
+        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=90)
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            ai_cache.set(cache_key, content)
+            return content
+        else:
+            return f"分析失败: API Error {response.status_code}"
+    except Exception as e:
+        return f"分析异常: {e}"
+
 if __name__ == "__main__":
     generate_watchlist()
