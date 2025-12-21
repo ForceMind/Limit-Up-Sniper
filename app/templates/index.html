@@ -1045,23 +1045,32 @@
             computed: {
                 // Time-based visibility logic
                 isPreMarketTime() {
-                    const h = this.currentTime.getHours();
-                    const m = this.currentTime.getMinutes();
+                    const now = new Date();
+                    const day = now.getDay();
+                    const isWeekend = (day === 0 || day === 6);
+                    const h = now.getHours();
+                    const m = now.getMinutes();
                     const timeVal = h * 100 + m;
+                    
+                    if (isWeekend) return true; // Show pre-market/results on weekend
+                    
                     // Hide after 09:30, Show after 15:00
                     if (timeVal >= 930 && timeVal < 1500) return false;
                     return true;
                 },
                 showIntraday() {
                     // Show Intraday if 09:30 <= time < 15:00
-                    const h = this.currentTime.getHours();
-                    const m = this.currentTime.getMinutes();
+                    const now = new Date();
+                    const day = now.getDay();
+                    const isWeekend = (day === 0 || day === 6);
+                    const h = now.getHours();
+                    const m = now.getMinutes();
                     const timeVal = h * 100 + m;
                     
                     if (window.innerWidth < 768) return this.activeTab === 'intra';
                     
-                    // Desktop logic: Hide after 15:00? User said "Hide Intraday after close"
-                    if (timeVal >= 1500) return false;
+                    // Desktop logic: Hide after 15:00 or on weekends
+                    if (isWeekend || timeVal >= 1500) return false;
                     return true;
                 },
                 // Left Column: Aggressive Strategy
@@ -1669,15 +1678,17 @@
 
                 // Initialize activeTab based on time for Mobile
                 const now = new Date();
+                const day = now.getDay();
                 const h = now.getHours();
                 const m = now.getMinutes();
                 const timeVal = h * 100 + m;
+                const isWeekend = (day === 0 || day === 6);
                 
                 // Update isMobile on mount to be sure
                 this.isMobile = window.innerWidth < 768;
 
                 if (this.isMobile) {
-                     if (timeVal >= 930 && timeVal < 1500) {
+                    if (!isWeekend && timeVal >= 930 && timeVal < 1500) {
                         this.activeTab = 'intra';
                     } else {
                         this.activeTab = 'pre';
@@ -1741,7 +1752,8 @@
                 
                 // Initialize visibility based on time
                 // Reuse time variables calculated above
-                if (timeVal >= 930 && timeVal < 1500) {
+                const isTradingHours = timeVal >= 930 && timeVal < 1500;
+                if (!isWeekend && isTradingHours) {
                     this.showAggressivePanel = false;
                 }
 

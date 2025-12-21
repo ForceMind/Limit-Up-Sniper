@@ -556,11 +556,14 @@ async def run_initial_scan():
     try:
         # 等待几秒确保其他组件就绪
         await asyncio.sleep(2)
-        if SYSTEM_CONFIG["auto_analysis_enabled"]:
+        # 仅在交易日且配置开启时执行初始扫描
+        if is_market_open_day() and SYSTEM_CONFIG["auto_analysis_enabled"]:
             await asyncio.to_thread(execute_analysis, "intraday")
             print("Startup: Initial scan completed.")
             # Update last run time to prevent immediate re-run by scheduler
             SYSTEM_CONFIG["last_run_time"] = time.time()
+        else:
+            print("Startup: Skipping initial scan (Non-trading day or disabled).")
     except Exception as e:
         print(f"Startup scan error: {e}")
 
@@ -796,7 +799,7 @@ async def scheduler_loop():
                     last_pool_update_time = current_timestamp
 
             # Task 4: LHB Sync (Daily at 18:00)
-            if now.hour == 18 and now.minute == 0 and now.second < 10:
+            if is_market_open_day() and now.hour == 18 and now.minute == 0 and now.second < 10:
                 if lhb_manager.config['enabled'] and not lhb_manager.is_syncing:
                     print(f"[{now}] Auto-starting LHB sync...")
                     # Run in executor to avoid blocking loop
