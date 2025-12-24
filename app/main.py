@@ -1250,14 +1250,14 @@ async def get_ai_markers(code: str, type: str = None):
         keys.append(f"stock_analysis_{code}_day_trading_signal")
     elif type == '1min' or type == 'min':
         keys.append(f"stock_analysis_{code}_min_trading_signal")
-    
-    # Add fallbacks
-    keys.extend([
-        f"stock_analysis_{code}_min_trading_signal", 
-        f"stock_analysis_{code}_day_trading_signal", 
-        f"stock_analysis_{code}_trading_signal", 
-        f"stock_analysis_{code}_normal"
-    ])
+    else:
+        # Only use fallbacks if no type specified
+        keys.extend([
+            f"stock_analysis_{code}_min_trading_signal", 
+            f"stock_analysis_{code}_day_trading_signal", 
+            f"stock_analysis_{code}_trading_signal", 
+            f"stock_analysis_{code}_normal"
+        ])
     
     # Remove duplicates while preserving order
     unique_keys = []

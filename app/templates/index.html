@@ -982,8 +982,8 @@
                     </div>
                     <div class="flex flex-wrap gap-2 w-full md:w-auto justify-between md:justify-end items-center">
                         <div class="flex gap-2 flex-1 md:flex-none">
-                            <button @click="fetchKline('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">分时</button>
-                            <button @click="fetchKline('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">日K</button>
+                            <button @click="switchChartType('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">分时</button>
+                            <button @click="switchChartType('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">日K</button>
                         </div>
                         <button @click="triggerAIAnalysis" :disabled="analyzingAI || loadingChart" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 flex-1 md:flex-none font-medium shadow-sm">
                             <span v-if="analyzingAI" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -1001,7 +1001,7 @@
                         <div id="klineChart" class="w-full h-full"></div>
                     </div>
                     <!-- AI Analysis Panel -->
-                    <div v-show="aiAnalysisResult" class="w-full md:w-[400px] border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900 shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full z-20 relative">
+                    <div v-show="aiAnalysisResult" ref="aiPanel" class="w-full md:w-[400px] border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900 shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full z-20 relative transition-all duration-300">
                         <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-50 dark:bg-gray-900 py-2 z-10">
                             <h4 class="font-bold text-purple-600 flex items-center gap-2">
                                 <span>🧠</span> AI 分析报告
@@ -1187,6 +1187,16 @@
                     const s = this.marketSentiment.stats;
                     // If total volume is 0 or undefined, or if up+down counts are 0
                     return (s.total_volume === 0 || (s.up_count === 0 && s.down_count === 0));
+                }
+            },
+            watch: {
+                aiAnalysisResult(newVal) {
+                    // When panel visibility changes, resize chart
+                    this.$nextTick(() => {
+                        if (this.chartInstance) {
+                            this.chartInstance.resize();
+                        }
+                    });
                 }
             },
             methods: {
@@ -1763,9 +1773,22 @@
                         window.addEventListener('resize', this._resizeHandler);
                     }
                 },
+                async switchChartType(type) {
+                    if (this.chartType === type) return;
+                    this.chartType = type;
+                    this.currentAISignals = []; // Clear signals to prevent bleeding
+                    this.aiAnalysisResult = null; // Clear analysis text
+                    this.loadingChart = true;
+                    
+                    // Fetch both kline and markers for the new type
+                    await Promise.all([
+                        this.fetchKline(type),
+                        this.fetchAIMarkers()
+                    ]);
+                },
                 async fetchKline(type) {
                     const code = this.currentStock.code;
-                    this.chartType = type;
+                    // this.chartType = type; // Already set in switchChartType
                     this.loadingChart = true;
                     if (this.chartInstance) {
                         this.chartInstance.clear();
@@ -2053,6 +2076,7 @@
                                 axisTick: { show: false },
                                 splitLine: { show: false },
                                 axisLabel: { show: false },
+                                axisPointer: { label: { show: false } }, // Hide duplicate date label
                                 min: 'dataMin',
                                 max: 'dataMax'
                             }
@@ -2135,7 +2159,9 @@
                     
                     // Add click handler for markPoints
                     this.chartInstance.off('click'); // Remove old listeners
-                    this.chartInstance.on('click', (params) => {
+                    
+                    // Robust click handler for both PC and Mobile
+                    const handlePointClick = (params) => {
                         // Check if it's a markPoint OR if the data has a reason property (more robust)
                         if ((params.componentType === 'markPoint' || params.data?.reason) && params.data) {
                             if (params.data.reason) {
@@ -2145,12 +2171,26 @@
                                 // Fallback: Try to find matching signal in currentAISignals by index
                                 const dataIndex = params.data.coord ? params.data.coord[0] : -1;
                                 if (dataIndex !== -1 && this.currentAISignals) {
-                                    // Try to find a signal that matches this index (approximate date match)
-                                    // This is a bit complex because we don't have the date here easily, but we have the index.
-                                    // Let's just show a generic message if reason is missing.
                                     this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n(暂无详细分析内容，请重新分析)`;
                                 }
                             }
+                        }
+                    };
+
+                    this.chartInstance.on('click', handlePointClick);
+                    
+                    // Extra safety: Listen to ZRender clicks to catch clicks that might be swallowed
+                    // This is a lower-level event listener
+                    this.chartInstance.getZr().on('click', (params) => {
+                        if (!params.target) {
+                            // Clicked on blank area -> Close analysis
+                            this.aiAnalysisResult = null;
+                        } else {
+                            // Check if the target belongs to a markPoint
+                            // ECharts internals: target.dataIndex, target.seriesIndex might be available on the shape
+                            // But usually the high-level 'click' event is better.
+                            // If high-level click failed, we might try to find the element here.
+                            // However, for now, let's trust the high-level click with the 'mousemove' trigger fix.
                         }
                     });
                 },
