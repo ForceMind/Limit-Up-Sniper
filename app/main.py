@@ -1016,14 +1016,35 @@ async def api_analyze_stock(request: StockAnalysisRequest):
         cache_time = datetime.fromtimestamp(cache_entry['timestamp'])
         now = datetime.now()
         
-        # Expiry Logic: Expire at 15:00 daily
-        # If cache is from today before 15:00, and now is after 15:00 -> Expired
-        # If cache is from yesterday -> Expired
+        # Expiry Logic
         is_expired = False
+        
+        # 1. Basic Date Check: If cache is from yesterday, it's expired
         if cache_time.date() < now.date():
             is_expired = True
-        elif cache_time.hour < 15 and now.hour >= 15:
-            is_expired = True
+        
+        # 2. Specific Logic based on promptType
+        if not is_expired:
+            if prompt_type == 'min_trading_signal':
+                # Minute analysis: Expire if new trading day starts (e.g. after 9:30)
+                # If cache is from before 9:30 today, and now is after 9:30, expire it?
+                # Or simply: Minute analysis is valid for the day, but if we are in a new day (handled by date check), it's gone.
+                # User requirement: "分时的分析新的交易日开盘后可以删除"
+                # This implies if I analyze at 10:00, and now it's 11:00, it's still valid.
+                # But if I analyze yesterday, it's invalid (handled by date).
+                # What if I analyze at 9:00 (pre-market)? It might be invalid after 9:30.
+                if cache_time.hour < 9 and cache_time.minute < 30 and (now.hour > 9 or (now.hour == 9 and now.minute >= 30)):
+                    is_expired = True
+            
+            elif prompt_type == 'day_trading_signal':
+                # Day analysis: "Wait until trading day is no longer visible" -> Keep for the whole day.
+                # Do NOT expire at 15:00.
+                pass
+            
+            else:
+                # Default logic for other types: Expire at 15:00
+                if cache_time.hour < 15 and now.hour >= 15:
+                    is_expired = True
             
         if not is_expired:
             return {"status": "success", "analysis": cache_entry['content'], "cached": True}
@@ -1223,12 +1244,22 @@ async def get_stock_kline(code: str, type: str = "1min"):
 @app.get("/api/stock/ai_markers")
 async def get_ai_markers(code: str):
     """获取个股的AI分析历史标记"""
-    # Try trading_signal first, then normal
-    keys = [f"stock_analysis_{code}_trading_signal", f"stock_analysis_{code}_normal"]
+    # Try all possible keys, prioritizing specific ones
+    keys = [
+        f"stock_analysis_{code}_min_trading_signal", 
+        f"stock_analysis_{code}_day_trading_signal", 
+        f"stock_analysis_{code}_trading_signal", 
+        f"stock_analysis_{code}_normal"
+    ]
     
     for key in keys:
         data = ai_cache.get(key)
         if data:
+            # Check expiry logic for retrieval too
+            # Although ai_cache might not store timestamp in 'get', we can check if we have timestamp in cache
+            # But ai_cache implementation details are in core/ai_cache.py. 
+            # Assuming simple retrieval for now.
+            
             # If it's a string (JSON string or plain text), try to parse it
             if isinstance(data, str):
                 try:

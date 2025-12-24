@@ -980,22 +980,20 @@
                             </svg>
                         </button>
                     </div>
-                    <div class="flex flex-wrap gap-2 w-full md:w-auto justify-between md:justify-end">
-                        <div class="flex gap-2">
-                            <button @click="fetchKline('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1 rounded text-sm transition-colors flex-1 md:flex-none text-center">分时</button>
-                            <button @click="fetchKline('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1 rounded text-sm transition-colors flex-1 md:flex-none text-center">日K</button>
+                    <div class="flex flex-wrap gap-2 w-full md:w-auto justify-between md:justify-end items-center">
+                        <div class="flex gap-2 flex-1 md:flex-none">
+                            <button @click="fetchKline('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">分时</button>
+                            <button @click="fetchKline('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">日K</button>
                         </div>
-                        <div class="flex gap-2">
-                            <button @click="triggerAIAnalysis" :disabled="analyzingAI" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center gap-2 transition-colors disabled:opacity-50">
-                                <span v-if="analyzingAI" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                <span>{{ analyzingAI ? '分析中...' : (chartType === 'day' ? '🤖 日K分析' : '🤖 分时分析') }}</span>
-                            </button>
-                            <button @click="closeChartModal" class="hidden md:block text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <button @click="triggerAIAnalysis" :disabled="analyzingAI" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 flex-1 md:flex-none font-medium shadow-sm">
+                            <span v-if="analyzingAI" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                            <span>{{ analyzingAI ? '分析中...' : (chartType === 'day' ? '🤖 日K分析' : '🤖 分时分析') }}</span>
+                        </button>
+                        <button @click="closeChartModal" class="hidden md:block text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
                 <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -1003,8 +1001,8 @@
                         <div id="klineChart" class="w-full h-full"></div>
                     </div>
                     <!-- AI Analysis Panel -->
-                    <div v-show="aiAnalysisResult" class="w-full md:w-[400px] border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900/50 shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full">
-                        <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-50 dark:bg-gray-900/50 py-2 z-10">
+                    <div v-show="aiAnalysisResult" class="w-full md:w-[400px] border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900 shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full z-20 relative">
+                        <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-50 dark:bg-gray-900 py-2 z-10">
                             <h4 class="font-bold text-purple-600 flex items-center gap-2">
                                 <span>🧠</span> AI 分析报告
                             </h4>
@@ -1950,7 +1948,7 @@
                         animation: false,
                         tooltip: {
                             trigger: 'axis',
-                            triggerOn: 'mousemove|click', // Ensure click works
+                            triggerOn: 'mousemove', // Revert to mousemove for PC to avoid click conflicts
                             enterable: true, // Allow mouse to enter tooltip
                             axisPointer: { type: 'cross' },
                             borderWidth: 1,
@@ -2090,11 +2088,15 @@
                     // Add click handler for markPoints
                     this.chartInstance.off('click'); // Remove old listeners
                     this.chartInstance.on('click', (params) => {
-                        if (params.componentType === 'markPoint' && params.data && params.data.reason) {
-                            // Show reason in AI Analysis Result area or Alert
-                            this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n${params.data.reason}`;
-                            // Also alert for immediate feedback if panel is not noticed
-                            // alert(`${params.data.value}原因：\n${params.data.reason}`);
+                        // console.log('Chart clicked:', params);
+                        if (params.componentType === 'markPoint') {
+                            if (params.data && params.data.reason) {
+                                // Show reason in AI Analysis Result area
+                                this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n${params.data.reason}`;
+                            } else if (params.data && params.data.value && (params.data.value.includes('AI') || params.data.value.includes('买') || params.data.value.includes('卖'))) {
+                                // Fallback for AI points without reason
+                                this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n暂无详细分析内容`;
+                            }
                         }
                     });
                 },
