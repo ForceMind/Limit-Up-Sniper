@@ -1,5 +1,14 @@
 [
   {
+    "code": "sh603986",
+    "name": "手动添加",
+    "reason": "手动添加",
+    "strategy_type": "Manual",
+    "added_at": "2025-12-24 10:55:54",
+    "concept": "半导体芯片",
+    "initial_score": 8.2
+  },
+  {
     "code": "sz000002",
     "name": "手动添加",
     "reason": "手动添加",

@@ -465,7 +465,7 @@ def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode=
         if logger: logger(f"[!] 解析AI结果失败: {e}\nRaw Content: {content[:100]}...")
         return {}
 
-def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None):
+def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=None, force_update=False):
     """
     对单个股票进行深度AI分析 (大师级逻辑)
     """
@@ -484,17 +484,19 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     
     # Rate Limit Check
     cache_key = f"stock_analysis_{code}_{prompt_type}"
-    last_ts = ai_cache.get_timestamp(cache_key)
-    time_diff = int(time.time()) - last_ts
     
-    if time_diff < 600: # 10 minutes
-        msg = f"分析过于频繁，请 {600 - time_diff} 秒后再试。"
-        if logger: logger(f"[!] {msg}")
-        # Try to return cached result if available
-        cached_data = ai_cache.get(cache_key)
-        if cached_data:
-            return f"[缓存结果] {cached_data}"
-        return msg
+    if not force_update:
+        last_ts = ai_cache.get_timestamp(cache_key)
+        time_diff = int(time.time()) - last_ts
+        
+        if time_diff < 600: # 10 minutes
+            msg = f"分析过于频繁，请 {600 - time_diff} 秒后再试。"
+            if logger: logger(f"[!] {msg}")
+            # Try to return cached result if available
+            cached_data = ai_cache.get(cache_key)
+            if cached_data:
+                return f"[缓存结果] {cached_data}"
+            return msg
     
     # Additional metrics for better analysis
     turnover = stock_data.get('turnover', stock_data.get('metrics', {}).get('turnover', '未知'))
@@ -546,11 +548,69 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
 
     # 2. 构建大师级分析 Prompt
     current_ts_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    kline_data = stock_data.get('kline_data')
     
     # Debug Log for User Verification
     print(f"[AI Analysis] Code: {code}, Turnover: {turnover}, LHB: {lhb_text[:50]}...")
 
-    if prompt_type == 'aggressive':
+    if prompt_type in ['trading_signal', 'day_trading_signal', 'min_trading_signal']:
+        # Prepare K-line data string
+        kline_str = "无K线数据"
+        if kline_data and len(kline_data) > 0:
+            # Format: Date, Open, Close, High, Low, Volume
+            kline_lines = ["Date,Open,Close,High,Low,Volume"]
+            for k in kline_data:
+                date = k.get('date') or k.get('时间')
+                o = k.get('open') or k.get('开盘')
+                c = k.get('close') or k.get('收盘')
+                h = k.get('high') or k.get('最高')
+                l = k.get('low') or k.get('最低')
+                v = k.get('volume') or k.get('成交量')
+                kline_lines.append(f"{date},{o},{c},{h},{l},{v}")
+            kline_str = "\n".join(kline_lines)
+
+        timeframe_desc = "近期K线"
+        if prompt_type == 'day_trading_signal':
+            timeframe_desc = "日K线"
+        elif prompt_type == 'min_trading_signal':
+            timeframe_desc = "分时(1分钟)K线"
+
+        prompt = f"""
+你是一位顶级的量化交易员和技术分析专家。请根据提供的股票【{name} ({code})】的{timeframe_desc}数据，进行精确的买卖点分析。
+
+【K线数据 (OHLCV)】
+{kline_str}
+
+【分析要求】
+1. **趋势判断**: 识别当前是上升、下降还是震荡趋势。
+2. **关键点位**: 找出最近的支撑位和压力位。
+3. **交易信号**: 基于技术指标（如均线、量价关系、K线形态、背离等），找出具体的买入或卖出信号。
+   - 信号必须包含：日期、类型(buy/sell)、价格、理由。
+   - 只标记胜率较高的关键转折点。
+   - 对于分时数据，重点关注盘中异动和量价配合。
+   - **重要**：同一根K线（同一个时间点）只能输出一个最强的信号，严禁在同一时间点同时输出买入和卖出，也不要输出重复信号。
+
+【输出格式】
+必须严格返回以下 JSON 格式，不要包含 Markdown 代码块标记：
+{{
+    "summary": "简短的分析总结（200字以内），包含趋势和操作建议。",
+    "signals": [
+        {{
+            "date": "YYYY-MM-DD HH:MM", 
+            "type": "buy", 
+            "price": 10.5, 
+            "reason": "突破20日均线且放量"
+        }},
+        {{
+            "date": "YYYY-MM-DD HH:MM", 
+            "type": "sell", 
+            "price": 11.2, 
+            "reason": "触及前期压力位出现顶分型"
+        }}
+    ]
+}}
+"""
+    elif prompt_type == 'aggressive':
         prompt = f"""
 你是一位擅长竞价抢筹和超短线博弈的顶级游资。请针对股票【{name} ({code})】进行“竞价抢筹”维度的深度推演。
 
@@ -718,6 +778,9 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
         "stream": False
     }
     
+    if prompt_type == 'trading_signal':
+        payload['response_format'] = { "type": "json_object" }
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {current_api_key}"
@@ -730,6 +793,13 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
             result = response.json()
             content = result['choices'][0]['message']['content']
             
+            # Parse JSON if needed
+            if prompt_type == 'trading_signal':
+                try:
+                    content = json.loads(content)
+                except:
+                    pass
+
             # Save to cache
             ai_cache.set(cache_key, content)
             

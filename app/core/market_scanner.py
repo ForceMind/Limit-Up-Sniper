@@ -68,11 +68,14 @@ def scan_intraday_limit_up(logger=None):
                 else:
                     full_code = f"sh{code}" if code.startswith('6') else f"sz{code}"
 
-                # 初步筛选: 涨幅 > 5% (20cm > 10%)
+                # 初步筛选: 涨幅 > 5% (20cm > 15%)
                 if is_20cm:
-                    if change_percent < 10.0: continue
+                    if change_percent < 15.0: continue
                 else:
                     if change_percent < 5.0: continue
+                
+                # 涨速过滤 > 3%
+                if speed < 3.0: continue
                     
                 if 'ST' in name: continue
                 

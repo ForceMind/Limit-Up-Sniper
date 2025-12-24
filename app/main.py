@@ -9,7 +9,7 @@ import shutil
 import asyncio
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
 from app.core.news_analyzer import generate_watchlist, analyze_single_stock, analyze_daily_lhb
@@ -17,6 +17,7 @@ from app.core.market_scanner import scan_limit_up_pool, scan_broken_limit_pool, 
 from app.core.stock_utils import calculate_metrics, is_trading_time, is_market_open_day
 from app.core.data_provider import data_provider
 from app.core.lhb_manager import lhb_manager
+from app.core.ai_cache import ai_cache
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -1141,3 +1142,103 @@ async def download_data_backup():
         return {"status": "error", "message": str(e)}
 
 # Trigger reload for metrics update
+
+class AnalyzeRequest(BaseModel):
+    code: str
+    name: str
+    promptType: str = "normal"
+    force: bool = False
+    kline_data: Optional[List] = None
+
+@app.post("/api/lhb/fetch")
+async def fetch_lhb_data(background_tasks: BackgroundTasks):
+    """手动触发龙虎榜数据抓取"""
+    background_tasks.add_task(lhb_manager.fetch_and_update_data)
+    return {"status": "success", "message": "龙虎榜数据同步任务已在后台启动"}
+
+@app.post("/api/stock/analyze")
+async def analyze_stock_manual(request: AnalyzeRequest):
+    """手动触发个股AI分析"""
+    stock_data = {
+        "code": request.code,
+        "name": request.name,
+        "promptType": request.promptType,
+        "current": 0,
+        "change_percent": 0,
+        "kline_data": request.kline_data
+    }
+    
+    try:
+        df = data_provider.fetch_all_market_data()
+        if df is not None and not df.empty:
+            # Try to match code (df code might be 'sz000001' or '000001')
+            # request.code is likely '000001'
+            # Let's normalize
+            clean_req_code = "".join(filter(str.isdigit, request.code))
+            
+            for _, row in df.iterrows():
+                row_code = str(row['code'])
+                clean_row_code = "".join(filter(str.isdigit, row_code))
+                if clean_req_code == clean_row_code:
+                    stock_data['current'] = float(row['current'])
+                    stock_data['change_percent'] = float(row['change_percent'])
+                    stock_data['turnover'] = float(row.get('turnover', 0))
+                    stock_data['circulation_value'] = float(row.get('circ_mv', 0))
+                    break
+    except:
+        pass
+
+    result = analyze_single_stock(stock_data, force_update=request.force)
+    return {"status": "success", "result": result}
+
+@app.get("/api/stock/kline")
+async def get_stock_kline(code: str, type: str = "1min"):
+    """获取个股K线数据"""
+    try:
+        clean_code = "".join(filter(str.isdigit, code))
+        if type == "1min":
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            df = lhb_manager.get_kline_1min(clean_code, date_str)
+            if df is None or df.empty:
+                 date_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                 df = lhb_manager.get_kline_1min(clean_code, date_str)
+            
+            if df is not None and not df.empty:
+                return {"status": "success", "data": df.to_dict('records')}
+        elif type == "day":
+            import akshare as ak
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+            df = ak.stock_zh_a_hist(symbol=clean_code, period="daily", start_date=start_date, end_date=end_date, adjust="qfq")
+            if df is not None and not df.empty:
+                # Rename columns to match standard
+                df = df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close", "最高": "high", "最低": "low", "成交量": "volume"})
+                return {"status": "success", "data": df.to_dict('records')}
+                
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+    return {"status": "error", "message": "No data found"}
+
+@app.get("/api/stock/ai_markers")
+async def get_ai_markers(code: str):
+    """获取个股的AI分析历史标记"""
+    # Try trading_signal first, then normal
+    keys = [f"stock_analysis_{code}_trading_signal", f"stock_analysis_{code}_normal"]
+    
+    for key in keys:
+        data = ai_cache.get(key)
+        if data:
+            # If it's a string (JSON string or plain text), try to parse it
+            if isinstance(data, str):
+                try:
+                    # Check if it looks like JSON
+                    if data.strip().startswith('{'):
+                        parsed = json.loads(data)
+                        return {"status": "success", "markers": [{"date": datetime.now().strftime('%Y-%m-%d'), "data": parsed}]}
+                except:
+                    pass
+            
+            return {"status": "success", "markers": [{"date": datetime.now().strftime('%Y-%m-%d'), "data": data}]}
+            
+    return {"status": "success", "markers": []}

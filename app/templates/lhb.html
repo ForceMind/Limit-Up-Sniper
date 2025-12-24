@@ -44,6 +44,12 @@
                     <option v-for="date in availableDates" :key="date" :value="date">{{ date }}</option>
                 </select>
 
+                <button @click="fetchLHB" :disabled="fetchingLHB"
+                        class="px-3 py-1.5 md:px-4 md:py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs md:text-sm rounded shadow transition-colors flex items-center gap-1 md:gap-2 disabled:opacity-50 whitespace-nowrap">
+                    <span v-if="fetchingLHB" class="w-3 h-3 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>{{ fetchingLHB ? '同步中' : '同步数据' }}</span>
+                </button>
+
                 <button @click="analyzeDaily" :disabled="analyzing"
                         class="px-3 py-1.5 md:px-4 md:py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs md:text-sm rounded shadow transition-colors flex items-center gap-1 md:gap-2 disabled:opacity-50 whitespace-nowrap">
                     <span v-if="analyzing" class="w-3 h-3 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -168,6 +174,7 @@
                     lhbData: [],
                     loading: false,
                     analyzing: false,
+                    fetchingLHB: false,
                     analysisResult: '',
                     showAnalysisPanel: false, // Default hidden on mobile
                     isDark: false,
@@ -219,6 +226,22 @@
                         this.lhbData = [];
                     } finally {
                         this.loading = false;
+                    }
+                },
+                async fetchLHB() {
+                    this.fetchingLHB = true;
+                    try {
+                        const res = await fetch('/api/lhb/fetch', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            alert('同步任务已启动，请稍后刷新页面查看数据。');
+                        } else {
+                            alert('同步失败: ' + data.message);
+                        }
+                    } catch (e) {
+                        alert('请求异常: ' + e.message);
+                    } finally {
+                        this.fetchingLHB = false;
                     }
                 },
                 async analyzeDaily() {

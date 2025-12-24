@@ -367,6 +367,24 @@ class LHBManager:
         file_path = KLINE_DIR / f"{code}_{date_str}.csv"
         if file_path.exists():
             return pd.read_csv(file_path)
+            
+        # Try to fetch if missing
+        try:
+            # Format date for akshare
+            start_dt = date_str + " 09:00:00"
+            end_dt = date_str + " 15:00:00"
+            
+            # Remove non-digits from code just in case
+            clean_code = "".join(filter(str.isdigit, str(code)))
+            
+            kline = ak.stock_zh_a_hist_min_em(symbol=clean_code, start_date=start_dt, end_date=end_dt, period="1", adjust="qfq")
+            
+            if kline is not None and not kline.empty:
+                kline.to_csv(file_path, index=False)
+                return kline
+        except Exception as e:
+            print(f"Error fetching kline for {code}: {e}")
+            
         return None
 
     def get_latest_lhb_info(self, code):

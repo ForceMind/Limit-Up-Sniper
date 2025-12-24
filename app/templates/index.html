@@ -13,6 +13,7 @@
         }
     </script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         /* Prevent font scaling on mobile */
@@ -357,7 +358,8 @@
                         <div class="p-2 space-y-1">
                             <transition-group name="list" tag="div" class="space-y-1">
                                 <div v-for="(stock, index) in limitUpStocks" :key="stock.code" 
-                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
+                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 cursor-pointer"
+                                     @click="openChart(stock)"
                                      :class="getRowHighlightClass(stock)"
                                      style="grid-template-columns: 60px 70px 1fr 100px 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
                                     
@@ -366,7 +368,7 @@
                                         {{ stock.code.replace('sh', '').replace('sz', '') }}
                                     </div>
                                     <div class="font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
-                                        <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
+                                        <span class="text-gray-900 dark:text-gray-100">{{ stock.name }}</span>
                                     </div>
                                     <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
                                         <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
@@ -485,7 +487,8 @@
                         <div class="p-2 space-y-1">
                             <transition-group name="list" tag="div" class="space-y-1">
                                 <div v-for="(stock, index) in manualStocks" :key="stock.code" 
-                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2"
+                                     class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 cursor-pointer"
+                                     @click="openChart(stock)"
                                      :class="getRowHighlightClass(stock)"
                                      style="grid-template-columns: 60px 70px 1fr 60px 60px 50px 50px 60px 45px 45px 45px 45px;">
                                     
@@ -494,7 +497,7 @@
                                         {{ stock.code.replace('sh', '').replace('sz', '') }}
                                     </div>
                                     <div class="font-bold truncate sticky left-0 z-20 bg-white dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm text-sm">
-                                        <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
+                                        <span class="text-gray-900 dark:text-gray-100">{{ stock.name }}</span>
                                     </div>
                                     <div class="text-center text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 overflow-hidden">
                                         <span :class="stock.showFullConcept ? 'whitespace-normal break-words' : 'truncate'" @click.stop="toggleConcept(stock)">{{ stock.concept }}</span>
@@ -572,12 +575,13 @@
                             <div class="p-2 space-y-1">
                                 <transition-group name="list" tag="div" class="space-y-1">
                                     <div v-for="(stock, index) in filteredLimitUpPool" :key="stock.code" 
-                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-red-50 dark:bg-red-900/10"
+                                         class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent grid gap-2 items-center px-2 py-2 bg-red-50 dark:bg-red-900/10 cursor-pointer"
+                                         @click="openChart(stock)"
                                          style="grid-template-columns: 60px 70px 60px 60px 60px 60px 1.5fr 1fr 45px 45px 45px 45px;">
                                         
                                         <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '').replace('bj', '') }}</div>
                                         <div class="font-bold truncate sticky left-0 z-20 bg-red-50 dark:bg-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-700 pl-2 border-r border-gray-200 dark:border-gray-700 shadow-sm text-sm">
-                                            <a :href="`https://quote.eastmoney.com/${stock.code.replace('sh', '').replace('sz', '').replace('bj', '')}.html`" target="_blank" class="hover:underline text-gray-900 dark:text-gray-100">{{ stock.name }}</a>
+                                            <span class="text-gray-900 dark:text-gray-100">{{ stock.name }}</span>
                                         </div>
                                         <div class="text-right font-mono text-gray-700 dark:text-gray-300">{{ stock.current.toFixed(2) }}</div>
                                         <div class="text-right font-bold text-red-600 dark:text-red-500">
@@ -962,6 +966,55 @@
                 <p class="text-red-600 dark:text-red-500 tracking-widest animate-pulse">系统初始化中...</p>
             </div>
         </div>
+        <!-- Chart Modal -->
+        <div v-if="showChartModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-0 md:p-4" @click.self="closeChartModal">
+            <div class="bg-white dark:bg-gray-800 md:rounded-lg shadow-xl w-full max-w-6xl h-full md:h-[85vh] flex flex-col overflow-hidden">
+                <div class="p-2 md:p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-start md:items-center shrink-0 gap-2">
+                    <div class="flex items-center justify-between w-full md:w-auto gap-4">
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            {{ currentStock.name }} <span class="text-sm font-normal text-gray-500">{{ currentStock.code.replace(/\D/g, '') }}</span>
+                        </h3>
+                        <button @click="closeChartModal" class="md:hidden text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 w-full md:w-auto justify-between md:justify-end">
+                        <div class="flex gap-2">
+                            <button @click="fetchKline('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1 rounded text-sm transition-colors flex-1 md:flex-none text-center">分时</button>
+                            <button @click="fetchKline('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1 rounded text-sm transition-colors flex-1 md:flex-none text-center">日K</button>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="triggerAIAnalysis" :disabled="analyzingAI" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center gap-2 transition-colors disabled:opacity-50">
+                                <span v-if="analyzingAI" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                <span>{{ analyzingAI ? '分析中...' : (chartType === 'day' ? '🤖 日K分析' : '🤖 分时分析') }}</span>
+                            </button>
+                            <button @click="closeChartModal" class="hidden md:block text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+                    <div class="flex-1 h-[50vh] md:h-full relative shrink-0">
+                        <div id="klineChart" class="w-full h-full"></div>
+                    </div>
+                    <!-- AI Analysis Panel -->
+                    <div v-show="aiAnalysisResult" class="w-full md:w-[400px] border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900/50 shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full">
+                        <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-50 dark:bg-gray-900/50 py-2 z-10">
+                            <h4 class="font-bold text-purple-600 flex items-center gap-2">
+                                <span>🧠</span> AI 分析报告
+                            </h4>
+                            <span class="text-xs text-gray-500">{{ new Date().toLocaleTimeString() }}</span>
+                        </div>
+                        <div class="markdown-content text-sm leading-relaxed pb-4 text-gray-800 dark:text-gray-200" v-html="renderMarkdown(aiAnalysisResult)"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     {% endraw %}
 
@@ -1039,7 +1092,15 @@
                         days: 90,
                         min_amount_wan: 5000
                     },
-                    isSyncingLHB: false
+                    isSyncingLHB: false,
+                    // Chart Modal
+                    showChartModal: false,
+                    currentStock: {},
+                    chartType: '1min',
+                    aiAnalysisResult: null,
+                    analyzingAI: false,
+                    loadingChart: false,
+                    chartInstance: null,
                 }
             },
             computed: {
@@ -1644,6 +1705,491 @@
                     this.showAnalysisModal = false;
                     this.currentAnalysisStock = null;
                     if (this.typewriterInterval) clearInterval(this.typewriterInterval);
+                },
+                openChart(stock) {
+                    this.currentStock = stock;
+                    this.showChartModal = true;
+                    this.aiAnalysisResult = null;
+                    this.chartType = '1min';
+                    this.loadingChart = true;
+                    this.currentAISignals = []; // Reset signals
+                    this.currentKlineData = []; // Reset data
+                    this.$nextTick(() => {
+                        this.initChart();
+                        this.fetchKline('1min');
+                        this.fetchAIMarkers();
+                    });
+                },
+                closeChartModal() {
+                    this.showChartModal = false;
+                    this.loadingChart = false;
+                    this.currentAISignals = [];
+                    if (this.chartInstance) {
+                        this.chartInstance.dispose();
+                        this.chartInstance = null;
+                    }
+                },
+                initChart() {
+                    const chartDom = document.getElementById('klineChart');
+                    if (chartDom) {
+                        if (this.chartInstance) {
+                            this.chartInstance.dispose();
+                        }
+                        this.chartInstance = echarts.init(chartDom);
+                        window.addEventListener('resize', () => {
+                            this.chartInstance && this.chartInstance.resize();
+                        });
+                    }
+                },
+                async fetchKline(type) {
+                    const code = this.currentStock.code;
+                    this.chartType = type;
+                    this.loadingChart = true;
+                    if (this.chartInstance) {
+                        this.chartInstance.clear();
+                        this.chartInstance.showLoading({
+                            text: '加载中...',
+                            color: '#ef4444',
+                            textColor: '#ef4444',
+                            maskColor: 'rgba(255, 255, 255, 0.8)',
+                            zlevel: 0
+                        });
+                    }
+                    try {
+                        const res = await fetch(`/api/stock/kline?code=${code}&type=${type}`);
+                        
+                        if (!this.showChartModal || this.currentStock.code !== code) return;
+
+                        const data = await res.json();
+                        if (data.status === 'success' && Array.isArray(data.data)) {
+                            this.renderChart(data.data);
+                        } else {
+                            console.error(data.message || 'Invalid data format');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    } finally {
+                        if (this.showChartModal && this.currentStock.code === code) {
+                            this.loadingChart = false;
+                            if (this.chartInstance) this.chartInstance.hideLoading();
+                        }
+                    }
+                },
+                renderChart(data) {
+                    if (!this.chartInstance || this.chartInstance.isDisposed()) return;
+                    if (!data || !Array.isArray(data) || data.length === 0) return;
+                    
+                    this.currentKlineData = data;
+                    const aiSignals = this.currentAISignals || [];
+
+                    // 1. Strict Data Sanitization
+                    const cleanData = [];
+                    for (let i = 0; i < data.length; i++) {
+                        const item = data[i];
+                        const date = String(item.date || item.时间);
+                        const open = parseFloat(item.open || item.开盘);
+                        const close = parseFloat(item.close || item.收盘);
+                        const low = parseFloat(item.low || item.最低);
+                        const high = parseFloat(item.high || item.最高);
+                        const vol = parseFloat(item.volume || item.成交量 || 0);
+
+                        // Ensure valid numbers and date
+                        if (date && !isNaN(open) && !isNaN(close) && !isNaN(low) && !isNaN(high)) {
+                            cleanData.push({ date, values: [open, close, low, high, vol] });
+                        }
+                    }
+
+                    if (cleanData.length === 0) return;
+
+                    const isDay = this.chartType === 'day';
+                    const dates = cleanData.map(d => d.date);
+                    const values = cleanData.map(d => d.values);
+                    const volumes = values.map((item, i) => [i, item[4], item[0] > item[1] ? -1 : 1]);
+
+                    // Calculate MA for Day chart
+                    const calculateMA = (dayCount) => {
+                        var result = [];
+                        for (var i = 0, len = values.length; i < len; i++) {
+                            if (i < dayCount) {
+                                result.push('-');
+                                continue;
+                            }
+                            var sum = 0;
+                            for (var j = 0; j < dayCount; j++) {
+                                sum += values[i - j][1];
+                            }
+                            result.push((sum / dayCount).toFixed(2));
+                        }
+                        return result;
+                    };
+
+                    // Calculate TD11 (11-Turn)
+                    const calculateTD11 = () => {
+                        const points = [];
+                        let buySetup = 0;
+                        let sellSetup = 0;
+                        
+                        for (let i = 0; i < values.length; i++) {
+                            if (i < 4) continue;
+                            const close = values[i][1];
+                            const close4 = values[i-4][1];
+                            
+                            if (close < close4) {
+                                buySetup++;
+                                sellSetup = 0;
+                            } else if (close > close4) {
+                                sellSetup++;
+                                buySetup = 0;
+                            } else {
+                                buySetup = 0;
+                                sellSetup = 0;
+                            }
+                            
+                            if (buySetup === 11) {
+                                points.push({ 
+                                    coord: [i, values[i][2]], 
+                                    value: 'B11',
+                                    itemStyle: { color: '#ef4444' },
+                                    label: { color: '#fff', fontWeight: 'bold', fontSize: 10 }
+                                });
+                            } else if (sellSetup === 11) {
+                                points.push({ 
+                                    coord: [i, values[i][3]], 
+                                    value: 'S11',
+                                    itemStyle: { color: '#22c55e' },
+                                    label: { color: '#fff', fontWeight: 'bold', fontSize: 10 }
+                                });
+                            }
+                        }
+                        return points;
+                    };
+
+                    let markPointsData = isDay ? calculateTD11() : [];
+
+                    // Add AI Signals
+                    if (aiSignals && aiSignals.length > 0) {
+                        // Filter duplicate signals for same date/time to avoid clutter
+                        const uniqueSignals = [];
+                        const seenDates = new Set();
+                        
+                        aiSignals.forEach(s => {
+                            if (!s.date) return;
+                            // Normalize date key
+                            const key = String(s.date).substring(0, 16);
+                            if (!seenDates.has(key)) {
+                                seenDates.add(key);
+                                uniqueSignals.push(s);
+                            }
+                        });
+
+                        uniqueSignals.forEach(signal => {
+                            if (!signal.date) return;
+                            
+                            let idx = -1;
+                            const signalDate = String(signal.date);
+                            
+                            // 1. Exact match
+                            idx = dates.indexOf(signalDate);
+                            
+                            // 2. Day match (YYYY-MM-DD)
+                            if (idx === -1) {
+                                const shortDate = signalDate.split(' ')[0];
+                                // Find first occurrence of this date
+                                idx = dates.findIndex(d => d === shortDate || d.startsWith(shortDate));
+                            }
+                            
+                            // 3. Fuzzy match for intraday (HH:MM)
+                            if (idx === -1 && !isDay) {
+                                // signalDate might be "2025-12-24 09:32:00"
+                                // dates might be "2025-12-24 09:32"
+                                const signalTime = signalDate.substring(0, 16); // "2025-12-24 09:32"
+                                idx = dates.findIndex(d => d.startsWith(signalTime));
+                            }
+                            
+                            if (idx !== -1) {
+                                // Check for overlap with existing points (TD11 or others)
+                                const existingPoints = markPointsData.filter(p => p.coord[0] === idx);
+                                const overlapCount = existingPoints.length;
+                                
+                                // Calculate offset: If overlap, move up/down
+                                // Base offset is 0. Each overlap adds vertical distance.
+                                // If signal is 'buy' (below), move lower (positive y offset).
+                                // If signal is 'sell' (above), move higher (negative y offset).
+                                // Note: symbolOffset is [x, y]. Positive y moves down.
+                                
+                                let yOffset = 0;
+                                if (overlapCount > 0) {
+                                    // Check if existing is same type to stack, or different to separate?
+                                    // Simple strategy: Just stack them outwards.
+                                    // If buy, move down by 50 * count
+                                    // If sell, move up by 50 * count
+                                    yOffset = (signal.type === 'buy' ? 1 : -1) * (overlapCount * 50);
+                                }
+
+                                markPointsData.push({
+                                    coord: [idx, signal.price || values[idx][1]],
+                                    value: signal.type === 'buy' ? 'AI买' : 'AI卖',
+                                    itemStyle: { color: signal.type === 'buy' ? '#ef4444' : '#22c55e' },
+                                    symbolOffset: [0, yOffset], // Apply offset
+                                    label: { 
+                                        formatter: function(params) {
+                                            return params.data.value;
+                                        },
+                                        fontSize: 10,
+                                        fontWeight: 'bold',
+                                        color: '#fff'
+                                    },
+                                    // Store reason in data for click handler
+                                    reason: signal.reason
+                                });
+                            }
+                        });
+                    }
+
+                    const option = {
+                        animation: false,
+                        tooltip: {
+                            trigger: 'axis',
+                            triggerOn: 'mousemove|click', // Ensure click works
+                            enterable: true, // Allow mouse to enter tooltip
+                            axisPointer: { type: 'cross' },
+                            borderWidth: 1,
+                            borderColor: '#ccc',
+                            padding: 10,
+                            textStyle: { color: '#333' },
+                            position: function (pos, params, el, elRect, size) {
+                                const obj = { top: 10 };
+                                obj[['left', 'right'][+(pos[0] < size.viewSize[0] / 2)]] = 30;
+                                return obj;
+                            }
+                        },
+                        axisPointer: {
+                            link: [{ xAxisIndex: 'all' }],
+                            label: { backgroundColor: '#777' }
+                        },
+                        visualMap: {
+                            show: false,
+                            seriesIndex: 1, // Volume series
+                            dimension: 2,
+                            pieces: [
+                                { value: 1, color: '#ef4444' },
+                                { value: -1, color: '#22c55e' }
+                            ]
+                        },
+                        grid: [
+                            {
+                                left: '5%',
+                                right: '5%',
+                                height: '60%',
+                                top: '10%'
+                            },
+                            {
+                                left: '5%',
+                                right: '5%',
+                                top: '75%',
+                                height: '15%'
+                            }
+                        ],
+                        xAxis: [
+                            {
+                                type: 'category',
+                                data: dates,
+                                scale: true,
+                                boundaryGap: false,
+                                axisLine: { onZero: false },
+                                splitLine: { show: false },
+                                min: 'dataMin',
+                                max: 'dataMax',
+                                axisPointer: { z: 100 }
+                            },
+                            {
+                                type: 'category',
+                                gridIndex: 1,
+                                data: dates,
+                                scale: true,
+                                boundaryGap: false,
+                                axisLine: { onZero: false },
+                                axisTick: { show: false },
+                                splitLine: { show: false },
+                                axisLabel: { show: false },
+                                min: 'dataMin',
+                                max: 'dataMax'
+                            }
+                        ],
+                        yAxis: [
+                            {
+                                scale: true,
+                                splitArea: { show: true }
+                            },
+                            {
+                                scale: true,
+                                gridIndex: 1,
+                                splitNumber: 2,
+                                axisLabel: { show: false },
+                                axisLine: { show: false },
+                                axisTick: { show: false },
+                                splitLine: { show: false }
+                            }
+                        ],
+                        dataZoom: [
+                            { 
+                                type: 'inside', 
+                                xAxisIndex: [0, 1], 
+                                start: isDay ? 50 : 0, 
+                                end: 100,
+                                filterMode: 'filter'
+                            }
+                        ],
+                        series: [
+                            {
+                                name: 'K线',
+                                type: 'candlestick',
+                                data: values.map(item => item.slice(0, 4)),
+                                itemStyle: {
+                                    color: '#ef4444',
+                                    color0: '#22c55e',
+                                    borderColor: '#ef4444',
+                                    borderColor0: '#22c55e'
+                                },
+                                markPoint: {
+                                    data: markPointsData,
+                                    symbol: 'pin',
+                                    symbolSize: 40,
+                                    label: { show: true, fontSize: 10, color: '#fff' },
+                                    itemStyle: {
+                                        opacity: 0.9
+                                    },
+                                    tooltip: {
+                                        show: true,
+                                        formatter: function(params) {
+                                            return params.data.reason || params.name;
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                name: '成交量',
+                                type: 'bar',
+                                xAxisIndex: 1,
+                                yAxisIndex: 1,
+                                data: volumes
+                            }
+                        ]
+                    };
+
+                    if (isDay) {
+                        option.series.push(
+                            { name: 'MA5', type: 'line', data: calculateMA(5), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } },
+                            { name: 'MA10', type: 'line', data: calculateMA(10), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } },
+                            { name: 'MA20', type: 'line', data: calculateMA(20), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } }
+                        );
+                    }
+                    
+                    this.chartInstance.setOption(option, true);
+                    
+                    // Add click handler for markPoints
+                    this.chartInstance.off('click'); // Remove old listeners
+                    this.chartInstance.on('click', (params) => {
+                        if (params.componentType === 'markPoint' && params.data && params.data.reason) {
+                            // Show reason in AI Analysis Result area or Alert
+                            this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n${params.data.reason}`;
+                            // Also alert for immediate feedback if panel is not noticed
+                            // alert(`${params.data.value}原因：\n${params.data.reason}`);
+                        }
+                    });
+                },
+                async triggerAIAnalysis() {
+                    this.analyzingAI = true;
+                    try {
+                        let klineData = [];
+                        if (this.currentKlineData && this.currentKlineData.length > 0) {
+                            // Limit data size to avoid token overflow, but ensure enough context
+                            // For minute chart (240 points max), send all. For day chart, send last 100.
+                            const limit = this.chartType === 'day' ? 100 : 300;
+                            klineData = this.currentKlineData.slice(-limit);
+                        }
+
+                        const promptType = this.chartType === 'day' ? 'day_trading_signal' : 'min_trading_signal';
+
+                        const res = await fetch('/api/stock/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                code: this.currentStock.code,
+                                name: this.currentStock.name,
+                                promptType: promptType,
+                                force: true,
+                                kline_data: klineData
+                            })
+                        });
+                        if (!res.ok) throw new Error(res.statusText);
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            let result = data.result;
+                            let signals = [];
+                            let summary = "";
+
+                            if (typeof result === 'string') {
+                                try {
+                                    const jsonStr = result.replace(/```json\n?|\n?```/g, '');
+                                    const parsed = JSON.parse(jsonStr);
+                                    if (parsed.signals && Array.isArray(parsed.signals)) signals = parsed.signals;
+                                    summary = parsed.summary || result;
+                                } catch (e) {
+                                    summary = result;
+                                }
+                            } else {
+                                if (result.signals && Array.isArray(result.signals)) signals = result.signals;
+                                summary = result.summary || JSON.stringify(result, null, 2);
+                            }
+                            
+                            this.aiAnalysisResult = summary;
+                            this.currentAISignals = signals;
+                            this.renderChart(this.currentKlineData);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.aiAnalysisResult = "分析请求失败，请稍后重试。";
+                    } finally {
+                        this.analyzingAI = false;
+                    }
+                },
+                async fetchAIMarkers() {
+                    try {
+                        const res = await fetch(`/api/stock/ai_markers?code=${this.currentStock.code}`);
+                        if (!res.ok) return;
+                        const contentType = res.headers.get("content-type");
+                        if (!contentType || !contentType.includes("application/json")) return;
+                        
+                        const data = await res.json();
+                        if (data.status === 'success' && data.markers.length > 0) {
+                            const latest = data.markers[0];
+                            let signals = [];
+                            let summary = "";
+
+                            if (latest.data && typeof latest.data === 'object') {
+                                if (latest.data.signals) signals = latest.data.signals;
+                                summary = latest.data.summary || JSON.stringify(latest.data);
+                            } else if (typeof latest.data === 'string') {
+                                try {
+                                    const jsonStr = latest.data.replace(/```json\n?|\n?```/g, '');
+                                    const parsed = JSON.parse(jsonStr);
+                                    if (parsed.signals) signals = parsed.signals;
+                                    summary = parsed.summary || latest.data;
+                                } catch(e) {
+                                    summary = latest.data;
+                                }
+                            }
+                            
+                            this.aiAnalysisResult = summary;
+                            this.currentAISignals = signals;
+                            if (this.currentKlineData && this.currentKlineData.length > 0) {
+                                this.renderChart(this.currentKlineData);
+                            }
+                        }
+                    } catch (e) {
+                        console.error(e);
+                    }
                 },
                 },
             mounted() {
