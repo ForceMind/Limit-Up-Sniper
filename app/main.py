@@ -1242,17 +1242,32 @@ async def get_stock_kline(code: str, type: str = "1min"):
     return {"status": "error", "message": "No data found"}
 
 @app.get("/api/stock/ai_markers")
-async def get_ai_markers(code: str):
+async def get_ai_markers(code: str, type: str = None):
     """获取个股的AI分析历史标记"""
-    # Try all possible keys, prioritizing specific ones
-    keys = [
+    # Determine priority based on type
+    keys = []
+    if type == 'day':
+        keys.append(f"stock_analysis_{code}_day_trading_signal")
+    elif type == '1min' or type == 'min':
+        keys.append(f"stock_analysis_{code}_min_trading_signal")
+    
+    # Add fallbacks
+    keys.extend([
         f"stock_analysis_{code}_min_trading_signal", 
         f"stock_analysis_{code}_day_trading_signal", 
         f"stock_analysis_{code}_trading_signal", 
         f"stock_analysis_{code}_normal"
-    ]
+    ])
     
-    for key in keys:
+    # Remove duplicates while preserving order
+    unique_keys = []
+    seen = set()
+    for k in keys:
+        if k not in seen:
+            unique_keys.append(k)
+            seen.add(k)
+    
+    for key in unique_keys:
         data = ai_cache.get(key)
         if data:
             # Check expiry logic for retrieval too

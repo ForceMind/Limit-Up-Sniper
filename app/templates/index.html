@@ -985,7 +985,7 @@
                             <button @click="fetchKline('1min')" :class="chartType === '1min' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">分时</button>
                             <button @click="fetchKline('day')" :class="chartType === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'" class="px-3 py-1.5 rounded text-sm transition-colors flex-1 md:flex-none text-center font-medium">日K</button>
                         </div>
-                        <button @click="triggerAIAnalysis" :disabled="analyzingAI" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 flex-1 md:flex-none font-medium shadow-sm">
+                        <button @click="triggerAIAnalysis" :disabled="analyzingAI || loadingChart" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 flex-1 md:flex-none font-medium shadow-sm">
                             <span v-if="analyzingAI" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                             <span>{{ analyzingAI ? '分析中...' : (chartType === 'day' ? '🤖 日K分析' : '🤖 分时分析') }}</span>
                         </button>
@@ -1006,7 +1006,14 @@
                             <h4 class="font-bold text-purple-600 flex items-center gap-2">
                                 <span>🧠</span> AI 分析报告
                             </h4>
-                            <span class="text-xs text-gray-500">{{ new Date().toLocaleTimeString() }}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">{{ new Date().toLocaleTimeString() }}</span>
+                                <button @click="aiAnalysisResult = null" class="md:hidden text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="markdown-content text-sm leading-relaxed pb-4 text-gray-800 dark:text-gray-200" v-html="renderMarkdown(aiAnalysisResult)"></div>
                     </div>
@@ -1726,6 +1733,10 @@
                         this.chartInstance.dispose();
                         this.chartInstance = null;
                     }
+                    if (this._resizeHandler) {
+                        window.removeEventListener('resize', this._resizeHandler);
+                        this._resizeHandler = null;
+                    }
                 },
                 initChart() {
                     const chartDom = document.getElementById('klineChart');
@@ -1734,9 +1745,22 @@
                             this.chartInstance.dispose();
                         }
                         this.chartInstance = echarts.init(chartDom);
-                        window.addEventListener('resize', () => {
-                            this.chartInstance && this.chartInstance.resize();
+                        
+                        // Add blank area click listener to close AI analysis
+                        this.chartInstance.getZr().on('click', (params) => {
+                            if (!params.target) {
+                                this.aiAnalysisResult = null;
+                            }
                         });
+
+                        // Remove existing resize listener if any (to prevent leaks)
+                        if (this._resizeHandler) {
+                            window.removeEventListener('resize', this._resizeHandler);
+                        }
+                        this._resizeHandler = () => {
+                            this.chartInstance && this.chartInstance.resize();
+                        };
+                        window.addEventListener('resize', this._resizeHandler);
                     }
                 },
                 async fetchKline(type) {
@@ -1819,6 +1843,24 @@
                             result.push((sum / dayCount).toFixed(2));
                         }
                         return result;
+                    };
+
+                    // VWAP Calculation (Intraday)
+                    const calculateVWAP = () => {
+                        let cumTPV = 0;
+                        let cumVol = 0;
+                        return values.map(item => {
+                            const open = item[0];
+                            const close = item[1];
+                            const low = item[2];
+                            const high = item[3];
+                            const vol = item[4];
+                            // Use average of OHLC as typical price approximation
+                            const typicalPrice = (open + close + high + low) / 4;
+                            cumTPV += typicalPrice * vol;
+                            cumVol += vol;
+                            return cumVol === 0 ? 0 : cumTPV / cumVol;
+                        });
                     };
 
                     // Calculate TD11 (11-Turn)
@@ -1948,7 +1990,8 @@
                         animation: false,
                         tooltip: {
                             trigger: 'axis',
-                            triggerOn: 'mousemove', // Revert to mousemove for PC to avoid click conflicts
+                            triggerOn: window.innerWidth < 768 ? 'click' : 'mousemove', // Click for mobile, hover for PC
+                            confine: true, // Keep tooltip inside chart
                             enterable: true, // Allow mouse to enter tooltip
                             axisPointer: { type: 'cross' },
                             borderWidth: 1,
@@ -2033,7 +2076,7 @@
                             { 
                                 type: 'inside', 
                                 xAxisIndex: [0, 1], 
-                                start: isDay ? 50 : 0, 
+                                start: isDay ? (values.length > 60 ? 100 - (60 / values.length * 100) : 0) : 0, 
                                 end: 100,
                                 filterMode: 'filter'
                             }
@@ -2077,9 +2120,14 @@
 
                     if (isDay) {
                         option.series.push(
-                            { name: 'MA5', type: 'line', data: calculateMA(5), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } },
-                            { name: 'MA10', type: 'line', data: calculateMA(10), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } },
-                            { name: 'MA20', type: 'line', data: calculateMA(20), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5 } }
+                            { name: 'MA5', type: 'line', data: calculateMA(5), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5, color: '#f59e0b' } },
+                            { name: 'MA10', type: 'line', data: calculateMA(10), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5, color: '#3b82f6' } },
+                            { name: 'MA20', type: 'line', data: calculateMA(20), smooth: true, symbol: 'none', lineStyle: { opacity: 0.5, color: '#ec4899' } }
+                        );
+                    } else {
+                        // Add VWAP for minute charts
+                        option.series.push(
+                            { name: 'VWAP', type: 'line', data: calculateVWAP(), smooth: true, symbol: 'none', lineStyle: { opacity: 0.8, color: '#eab308', width: 2 } }
                         );
                     }
                     
@@ -2088,14 +2136,20 @@
                     // Add click handler for markPoints
                     this.chartInstance.off('click'); // Remove old listeners
                     this.chartInstance.on('click', (params) => {
-                        // console.log('Chart clicked:', params);
-                        if (params.componentType === 'markPoint') {
-                            if (params.data && params.data.reason) {
+                        // Check if it's a markPoint OR if the data has a reason property (more robust)
+                        if ((params.componentType === 'markPoint' || params.data?.reason) && params.data) {
+                            if (params.data.reason) {
                                 // Show reason in AI Analysis Result area
                                 this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n${params.data.reason}`;
-                            } else if (params.data && params.data.value && (params.data.value.includes('AI') || params.data.value.includes('买') || params.data.value.includes('卖'))) {
-                                // Fallback for AI points without reason
-                                this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n暂无详细分析内容`;
+                            } else if (params.data.value && (params.data.value.includes('AI') || params.data.value.includes('买') || params.data.value.includes('卖'))) {
+                                // Fallback: Try to find matching signal in currentAISignals by index
+                                const dataIndex = params.data.coord ? params.data.coord[0] : -1;
+                                if (dataIndex !== -1 && this.currentAISignals) {
+                                    // Try to find a signal that matches this index (approximate date match)
+                                    // This is a bit complex because we don't have the date here easily, but we have the index.
+                                    // Let's just show a generic message if reason is missing.
+                                    this.aiAnalysisResult = `### ${params.data.value}点位分析\n\n(暂无详细分析内容，请重新分析)`;
+                                }
                             }
                         }
                     });
@@ -2158,7 +2212,7 @@
                 },
                 async fetchAIMarkers() {
                     try {
-                        const res = await fetch(`/api/stock/ai_markers?code=${this.currentStock.code}`);
+                        const res = await fetch(`/api/stock/ai_markers?code=${this.currentStock.code}&type=${this.chartType}`);
                         if (!res.ok) return;
                         const contentType = res.headers.get("content-type");
                         if (!contentType || !contentType.includes("application/json")) return;
