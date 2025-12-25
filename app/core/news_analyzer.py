@@ -926,7 +926,8 @@ def generate_watchlist(logger=None, mode="after_hours", hours=None, update_callb
             now = datetime.now()
             if now.hour >= 10:
                 for code, item in watchlist.items():
-                    if item.get('strategy_type') == 'Call Auction' and '已剔除' not in item.get('news_summary', ''):
+                    # 修正: 策略类型应为 Aggressive
+                    if item.get('strategy_type') == 'Aggressive' and '已剔除' not in item.get('news_summary', ''):
                         # 检查是否涨停，如果没涨停且时间已过，则剔除
                         if code not in sealed_codes:
                             item['strategy_type'] = 'Discarded'

@@ -347,7 +347,7 @@ async def update_market_pools_task():
 
 async def update_intraday_pool_task():
     """Fast loop for intraday scanner"""
-    global intraday_pool_data, limit_up_pool_data
+    global intraday_pool_data, limit_up_pool_data, watchlist_data, watchlist_map, WATCH_LIST
     from app.core.market_scanner import scan_intraday_limit_up
     loop = asyncio.get_event_loop()
     while True:
@@ -359,6 +359,42 @@ async def update_intraday_pool_task():
                 if result:
                     intraday_stocks, sealed_stocks = result
                     intraday_pool_data = intraday_stocks
+                    
+                    # [Fix] 合并到关注列表，确保它们出现在主表且不会因为涨速下降而消失
+                    changed = False
+                    for s in intraday_stocks:
+                        if s['code'] not in watchlist_map:
+                            new_item = {
+                                "code": s['code'],
+                                "name": s['name'],
+                                "concept": s['concept'],
+                                "news_summary": s['reason'], # 统一使用 news_summary
+                                "strategy_type": "LimitUp",
+                                "added_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "initial_score": s.get('score', 0)
+                            }
+                            watchlist_data.append(new_item)
+                            watchlist_map[s['code']] = new_item
+                            changed = True
+                    
+                    if changed:
+                        # 更新全局监控列表并保存
+                        WATCH_LIST = list(set(list(watchlist_map.keys()) + list(favorites_map.keys())))
+                        await loop.run_in_executor(None, save_watchlist, watchlist_data)
+                    
+                    # [New] 竞价列表清理逻辑 (10:00 后清理竞价策略股票)
+                    if now.hour >= 10:
+                        cleanup_changed = False
+                        sealed_codes = {s['code'] for s in limit_up_pool_data}
+                        for item in watchlist_data:
+                            if item.get('strategy_type') == 'Aggressive' and '已剔除' not in item.get('news_summary', ''):
+                                if item['code'] not in sealed_codes:
+                                    item['strategy_type'] = 'Discarded'
+                                    item['news_summary'] = f"[竞价过期] {item.get('news_summary', '')}"
+                                    cleanup_changed = True
+                        
+                        if cleanup_changed:
+                            await loop.run_in_executor(None, save_watchlist, watchlist_data)
                     
                     # Merge sealed stocks into limit_up_pool_data if not already present
                     if sealed_stocks:
@@ -871,7 +907,8 @@ def get_stock_quotes():
                 # Use AI info as base
                 stock['initial_score'] = ai_info.get("initial_score", 0)
                 stock['concept'] = ai_info.get("concept", stock.get('concept', '-'))
-                stock['reason'] = ai_info.get("reason", stock.get('reason', ''))
+                # 兼容 reason 和 news_summary
+                stock['reason'] = ai_info.get("reason", ai_info.get("news_summary", stock.get('reason', '')))
                 stock['seal_rate'] = ai_info.get("seal_rate", 0)
                 stock['broken_rate'] = ai_info.get("broken_rate", 0)
                 stock['next_day_premium'] = ai_info.get("next_day_premium", 0)
