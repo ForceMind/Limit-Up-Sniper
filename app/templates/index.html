@@ -2207,6 +2207,9 @@
                 async triggerAIAnalysis() {
                     this.analyzingAI = true;
                     try {
+                        // Refresh K-line data first to ensure AI gets the latest market info
+                        await this.fetchKline(this.chartType);
+
                         let klineData = [];
                         if (this.currentKlineData && this.currentKlineData.length > 0) {
                             // Limit data size to avoid token overflow, but ensure enough context

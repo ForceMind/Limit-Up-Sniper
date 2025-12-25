@@ -365,10 +365,14 @@ class LHBManager:
 
     def get_kline_1min(self, code, date_str):
         file_path = KLINE_DIR / f"{code}_{date_str}.csv"
-        if file_path.exists():
+        
+        # If it's today, we always fetch fresh data to ensure we have the latest minutes
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        
+        if file_path.exists() and not is_today:
             return pd.read_csv(file_path)
             
-        # Try to fetch if missing
+        # Try to fetch if missing or if it's today
         try:
             # Format date for akshare
             start_dt = date_str + " 09:00:00"
