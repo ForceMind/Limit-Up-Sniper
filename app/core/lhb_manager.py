@@ -127,8 +127,8 @@ class LHBManager:
                 # date_obj is likely datetime.date, so compare directly or use date_obj if it is date
                 check_date = date_obj.date() if hasattr(date_obj, 'date') else date_obj
                 
-                if check_date == now.date() and now.hour < 15:
-                     log(f"[LHB] 今日({date_iso})数据尚未公布(15:00后)，跳过。")
+                if check_date == now.date() and now.hour < 16:
+                     log(f"[LHB] 今日({date_iso})数据尚未公布(16:00后)，跳过。")
                      continue
                 
                 # Check if we already have data for this date (Optimization)
