@@ -1211,6 +1211,8 @@ class AnalyzeRequest(BaseModel):
 @app.post("/api/lhb/fetch")
 async def fetch_lhb_data(background_tasks: BackgroundTasks):
     """手动触发龙虎榜数据抓取"""
+    if lhb_manager.is_syncing:
+        return {"status": "error", "message": "同步任务正在进行中，请稍后再试"}
     background_tasks.add_task(lhb_manager.fetch_and_update_data)
     return {"status": "success", "message": "龙虎榜数据同步任务已在后台启动"}
 

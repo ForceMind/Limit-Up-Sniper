@@ -70,15 +70,19 @@ class LHBManager:
             pass
 
     def fetch_and_update_data(self, logger=None):
+        def log(msg):
+            if logger: logger(msg)
+            print(msg)
+
         if self.is_syncing:
-            if logger: logger("[LHB] 同步任务正在进行中，请勿重复操作。")
+            log("[LHB] 同步任务正在进行中，请勿重复操作。")
             return
 
         # Always reload config before sync to ensure we have latest settings (e.g. from other workers)
         self.load_config()
 
         if not self.config['enabled']:
-            if logger: logger("[LHB] 龙虎榜功能未开启，跳过更新。")
+            log("[LHB] 龙虎榜功能未开启，跳过更新。")
             return
 
         self.is_syncing = True
@@ -86,7 +90,7 @@ class LHBManager:
             days = self.config['days']
             min_amount = self.config['min_amount']
             
-            if logger: logger(f"[LHB] 开始同步最近 {days} 个交易日的龙虎榜数据...")
+            log(f"[LHB] 开始同步最近 {days} 个交易日的龙虎榜数据...")
 
             # 1. Get Trading Dates
             end_date = datetime.now()
@@ -99,7 +103,7 @@ class LHBManager:
                 trade_dates = [d for d in trade_dates if d >= start_date.date() and d <= end_date.date()]
                 trade_dates = trade_dates[-days:] # Take last N trading days
             except Exception as e:
-                if logger: logger(f"[LHB] 获取交易日历失败: {e}")
+                log(f"[LHB] 获取交易日历失败: {e}")
                 return
 
             # 2. Load existing data
@@ -118,13 +122,13 @@ class LHBManager:
                 date_str = date_obj.strftime('%Y%m%d')
                 date_iso = date_obj.strftime('%Y-%m-%d')
                 
-                # Check if it is today and before 18:00
+                # Check if it is today and before 15:30 (LHB usually starts after 16:00)
                 now = datetime.now()
                 # date_obj is likely datetime.date, so compare directly or use date_obj if it is date
                 check_date = date_obj.date() if hasattr(date_obj, 'date') else date_obj
                 
-                if check_date == now.date() and now.hour < 18:
-                     if logger: logger(f"[LHB] 今日({date_iso})数据尚未公布(18:00后)，跳过。")
+                if check_date == now.date() and now.hour < 15:
+                     log(f"[LHB] 今日({date_iso})数据尚未公布(15:00后)，跳过。")
                      continue
                 
                 # Check if we already have data for this date (Optimization)
@@ -141,34 +145,22 @@ class LHBManager:
                              existing_dates.add(str(d))
                     
                     if date_iso in existing_dates:
-                        # print(f"Skipping {date_iso}, already exists.")
-                        continue
+                        # If it's today, we might want to re-fetch to get latest data
+                        if date_iso != now.strftime('%Y-%m-%d'):
+                            continue
 
-                if logger: logger(f"[LHB] 正在抓取 {date_iso} 龙虎榜数据...")
+                log(f"[LHB] 正在抓取 {date_iso} 龙虎榜数据...")
                 
                 try:
                     # akshare: stock_lhb_detail_em (东方财富)
                     lhb_df = ak.stock_lhb_detail_em(start_date=date_str, end_date=date_str)
                     if lhb_df is None or lhb_df.empty:
-                        if logger: logger(f"  - akshare returned empty for {date_str}")
+                        log(f"  - akshare returned empty for {date_str}")
                         continue
                     
-                    # Debug columns
-                    if logger: logger(f"  - Columns: {lhb_df.columns.tolist()}")
-                    if logger: logger(f"  - First row: {lhb_df.iloc[0].to_dict()}")
-                    
                     # Filter by buy amount
-                    # Columns: 序号, 代码, 名称, 解读, 收盘价, 涨跌幅, 龙虎榜净买额, 龙虎榜买入额, 龙虎榜卖出额, 换手率, 市场总成交额, 上榜原因
-                    
-                    # Optimization: Only fetch stocks that match our criteria?
-                    # But we filter by SEAT buy amount. We don't know seat amount until we fetch detail.
-                    # However, if "Net Buy" or "Total Buy" of the stock is small, the seat buy won't be 50M.
-                    # So we can filter stocks where `龙虎榜买入额` > 50M first.
-                    
-                    # lhb_df columns usually have '买入额' (Total buy on LHB).
-                    # Let's assume lhb_df has '龙虎榜买入额'.
-                    
                     potential_stocks = lhb_df[lhb_df['龙虎榜买入额'] > min_amount]
+                    log(f"  - 发现 {len(potential_stocks)} 只符合金额条件的个股")
                     
                     for _, row in potential_stocks.iterrows():
                         stock_code = str(row['代码'])

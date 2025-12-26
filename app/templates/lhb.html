@@ -234,9 +234,9 @@
                         const res = await fetch('/api/lhb/fetch', { method: 'POST' });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            alert('同步任务已启动，请稍后刷新页面查看数据。');
+                            alert('同步任务已启动！\n\n数据正在后台抓取中，通常需要 1-2 分钟。\n抓取完成后，请刷新页面或重新选择日期查看。');
                         } else {
-                            alert('同步失败: ' + data.message);
+                            alert('提示: ' + data.message);
                         }
                     } catch (e) {
                         alert('请求异常: ' + e.message);
