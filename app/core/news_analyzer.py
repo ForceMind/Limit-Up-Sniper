@@ -570,8 +570,14 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
             return msg
     
     # Additional metrics for better analysis
-    turnover = stock_data.get('turnover', stock_data.get('metrics', {}).get('turnover', '未知'))
-    circ_value = stock_data.get('circulation_value', '未知')
+    turnover = stock_data.get('turnover')
+    if turnover is None:
+        turnover = stock_data.get('metrics', {}).get('turnover', '未知')
+        
+    circ_value = stock_data.get('circulation_value')
+    if circ_value is None:
+        circ_value = stock_data.get('metrics', {}).get('circulation_value', '未知')
+        
     if isinstance(circ_value, (int, float)) and circ_value > 0:
         circ_value = f"{round(circ_value / 100000000, 2)}亿"
     
@@ -587,6 +593,11 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
         target_date = lhb_info['date'] if lhb_info else datetime.now().strftime('%Y-%m-%d')
         kline_df = lhb_manager.get_kline_1min(code, target_date)
         
+        # If today is empty (e.g. weekend or before market), try yesterday
+        if kline_df is None or kline_df.empty:
+            prev_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            kline_df = lhb_manager.get_kline_1min(code, prev_date)
+
         if kline_df is not None and not kline_df.empty:
             # Simple feature extraction
             # Assuming cols: 日期, 开盘, 收盘, 最高, 最低, 成交量...
@@ -621,6 +632,20 @@ def analyze_single_stock(stock_data, logger=None, prompt_type='normal', api_key=
     current_ts_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     kline_data = stock_data.get('kline_data')
     
+    # Fallback for kline_data if missing (for trading_signal types)
+    if not kline_data and prompt_type in ['trading_signal', 'day_trading_signal', 'min_trading_signal']:
+        try:
+            target_date = datetime.now().strftime('%Y-%m-%d')
+            df = lhb_manager.get_kline_1min(code, target_date)
+            if df is None or df.empty:
+                prev_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                df = lhb_manager.get_kline_1min(code, prev_date)
+            
+            if df is not None and not df.empty:
+                kline_data = df.to_dict('records')
+        except:
+            pass
+
     # Debug Log for User Verification
     print(f"[AI Analysis] Code: {code}, Turnover: {turnover}, LHB: {lhb_text[:50]}...")
 

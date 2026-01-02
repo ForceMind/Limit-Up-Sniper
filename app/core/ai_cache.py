@@ -46,6 +46,18 @@ class AICache:
         }
         self._save_cache()
         
+    def cleanup(self, max_age_seconds=604800):
+        """
+        Remove entries older than max_age_seconds (default 7 days).
+        """
+        now = time.time()
+        initial_count = len(self.cache)
+        self.cache = {k: v for k, v in self.cache.items() if now - v.get('timestamp', 0) < max_age_seconds}
+        if len(self.cache) < initial_count:
+            self._save_cache()
+            return initial_count - len(self.cache)
+        return 0
+
     def get_timestamp(self, key):
         if key in self.cache:
             return self.cache[key].get('timestamp', 0)

@@ -1761,12 +1761,16 @@
                             current: stock.current,
                             change_percent: stock.change_percent,
                             concept: stock.concept,
+                            turnover: stock.turnover,
+                            circulation_value: stock.circulation_value,
                             metrics: {
                                 seal_rate: stock.seal_rate,
                                 broken_rate: stock.broken_rate,
                                 next_day_premium: stock.next_day_premium,
                                 limit_up_days: stock.limit_up_days,
-                                speed: stock.speed
+                                speed: stock.speed,
+                                turnover: stock.turnover,
+                                circulation_value: stock.circulation_value
                             },
                             promptType: promptType,
                             force: false, // Default use cache
@@ -1833,12 +1837,16 @@
                             current: stock.current,
                             change_percent: stock.change_percent,
                             concept: stock.concept,
+                            turnover: stock.turnover,
+                            circulation_value: stock.circulation_value,
                             metrics: {
                                 seal_rate: stock.seal_rate,
                                 broken_rate: stock.broken_rate,
                                 next_day_premium: stock.next_day_premium,
                                 limit_up_days: stock.limit_up_days,
-                                speed: stock.speed
+                                speed: stock.speed,
+                                turnover: stock.turnover,
+                                circulation_value: stock.circulation_value
                             },
                             promptType: promptType,
                             force: true, // Force re-analysis
@@ -2379,6 +2387,8 @@
                             body: JSON.stringify({
                                 code: this.currentStock.code,
                                 name: this.currentStock.name,
+                                turnover: this.currentStock.turnover,
+                                circulation_value: this.currentStock.circulation_value,
                                 promptType: promptType,
                                 force: true,
                                 kline_data: klineData

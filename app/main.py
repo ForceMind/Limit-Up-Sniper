@@ -236,44 +236,21 @@ def save_analysis_cache():
     except:
         pass
 
-@app.on_event("startup")
-async def startup_event():
-    load_analysis_cache()
+def cleanup_analysis_cache(max_age_days=7):
+    """清理超过指定天数的分析缓存"""
+    global ANALYSIS_CACHE
+    now = time.time()
+    max_age_seconds = max_age_days * 86400
+    initial_count = len(ANALYSIS_CACHE)
     
-    # Update base info (CircMV etc) on startup
-    print("Startup: Updating base stock info...")
-    await asyncio.to_thread(data_provider.update_base_info)
+    ANALYSIS_CACHE = {
+        k: v for k, v in ANALYSIS_CACHE.items() 
+        if now - v.get('timestamp', 0) < max_age_seconds
+    }
     
-    # Initial load
-    asyncio.create_task(scheduled_tasks())
-
-async def scheduled_tasks():
-    """
-    Background tasks scheduler.
-    """
-    while True:
-        try:
-            now = datetime.now()
-            
-            # Only run heavy tasks during trading hours or shortly after
-            if is_market_open_day():
-                # 1. Intraday Scan (Every 30s during trading)
-                if is_trading_time():
-                    await update_intraday_pool()
-                    await asyncio.sleep(30)
-                else:
-                    # Non-trading time: sleep longer
-                    await asyncio.sleep(60)
-                    
-                # 2. Market Pool Update (Every 5 mins)
-                # ... (Logic to be added if needed, currently triggered by frontend or separate loop)
-            else:
-                # Weekend: Sleep long
-                await asyncio.sleep(300)
-                
-        except Exception as e:
-            print(f"Scheduler error: {e}")
-            await asyncio.sleep(60)
+    if len(ANALYSIS_CACHE) < initial_count:
+        save_analysis_cache()
+        print(f"Cleanup: Removed {initial_count - len(ANALYSIS_CACHE)} expired analysis cache entries.")
 
 async def update_intraday_pool():
     global intraday_pool_data
@@ -635,6 +612,13 @@ def update_limit_up_pool_task():
 
 @app.on_event("startup")
 async def startup_event():
+    # Load caches
+    load_analysis_cache()
+    
+    # Update base info (CircMV etc) on startup
+    print("Startup: Updating base stock info...")
+    await asyncio.to_thread(data_provider.update_base_info)
+    
     asyncio.create_task(log_broadcaster())
     # Start background scheduler
     asyncio.create_task(scheduler_loop())
@@ -642,10 +626,28 @@ async def startup_event():
     asyncio.create_task(update_market_pools_task())
     # Start fast intraday scanner
     asyncio.create_task(update_intraday_pool_task())
+    # Start periodic cleanup task
+    asyncio.create_task(periodic_cleanup_task())
     
     # 启动时立即执行一次盘中扫描，确保列表不为空
     print("Startup: Running initial intraday scan...")
     asyncio.create_task(run_initial_scan())
+
+async def periodic_cleanup_task():
+    """定期清理缓存文件"""
+    while True:
+        try:
+            print("Running periodic cleanup...")
+            # 1. 清理 AI 分析缓存 (7天)
+            cleanup_analysis_cache(max_age_days=7)
+            # 2. 清理 AI 原始数据缓存 (7天)
+            ai_cache.cleanup(max_age_seconds=7 * 86400)
+            
+            # 每 24 小时运行一次
+            await asyncio.sleep(86400)
+        except Exception as e:
+            print(f"Cleanup task error: {e}")
+            await asyncio.sleep(3600)
 
 async def run_initial_scan():
     """启动时立即运行一次扫描"""
@@ -977,6 +979,7 @@ def get_stock_quotes():
                 stock['concept'] = ai_info.get("concept", stock.get('concept', '-'))
                 # 兼容 reason 和 news_summary
                 stock['reason'] = ai_info.get("reason", ai_info.get("news_summary", stock.get('reason', '')))
+                stock['news_summary'] = stock['reason'] # 确保前端能读取到详细逻辑
                 stock['seal_rate'] = ai_info.get("seal_rate", 0)
                 stock['broken_rate'] = ai_info.get("broken_rate", 0)
                 stock['next_day_premium'] = ai_info.get("next_day_premium", 0)
@@ -1096,6 +1099,8 @@ class StockAnalysisRequest(BaseModel):
     current: float
     change_percent: float
     concept: str = ""
+    turnover: Optional[float] = None
+    circulation_value: Optional[float] = None
     metrics: dict = {}
     promptType: str = "default"
     force: bool = False # Force re-analysis
@@ -1272,6 +1277,8 @@ async def download_data_backup():
 class AnalyzeRequest(BaseModel):
     code: str
     name: str
+    turnover: Optional[float] = None
+    circulation_value: Optional[float] = None
     promptType: str = "normal"
     force: bool = False
     kline_data: Optional[List] = None
@@ -1293,26 +1300,28 @@ async def analyze_stock_manual(request: AnalyzeRequest):
         "promptType": request.promptType,
         "current": 0,
         "change_percent": 0,
+        "turnover": request.turnover,
+        "circulation_value": request.circulation_value,
         "kline_data": request.kline_data
     }
     
     try:
-        df = data_provider.fetch_all_market_data()
-        if df is not None and not df.empty:
-            # Try to match code (df code might be 'sz000001' or '000001')
-            # request.code is likely '000001'
-            # Let's normalize
-            clean_req_code = "".join(filter(str.isdigit, request.code))
-            
-            for _, row in df.iterrows():
-                row_code = str(row['code'])
-                clean_row_code = "".join(filter(str.isdigit, row_code))
-                if clean_req_code == clean_row_code:
-                    stock_data['current'] = float(row['current'])
-                    stock_data['change_percent'] = float(row['change_percent'])
-                    stock_data['turnover'] = float(row.get('turnover', 0))
-                    stock_data['circulation_value'] = float(row.get('circ_mv', 0))
-                    break
+        # If turnover/circ_mv missing, try to fetch from market data
+        if stock_data['turnover'] is None or stock_data['circulation_value'] is None:
+            df = data_provider.fetch_all_market_data()
+            if df is not None and not df.empty:
+                clean_req_code = "".join(filter(str.isdigit, request.code))
+                for _, row in df.iterrows():
+                    row_code = str(row['code'])
+                    clean_row_code = "".join(filter(str.isdigit, row_code))
+                    if clean_req_code == clean_row_code:
+                        stock_data['current'] = float(row['current'])
+                        stock_data['change_percent'] = float(row['change_percent'])
+                        if stock_data['turnover'] is None:
+                            stock_data['turnover'] = float(row.get('turnover', 0))
+                        if stock_data['circulation_value'] is None:
+                            stock_data['circulation_value'] = float(row.get('circ_mv', 0))
+                        break
     except:
         pass
 
