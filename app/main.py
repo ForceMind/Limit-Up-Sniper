@@ -146,6 +146,19 @@ def reload_watchlist_globals():
     # WATCH_LIST includes both
     WATCH_LIST = list(set(list(watchlist_map.keys()) + list(favorites_map.keys())))
 
+@app.get("/api/news_history")
+async def get_news_history():
+    """获取新闻历史记录"""
+    history_file = DATA_DIR / "news_history.json"
+    if history_file.exists():
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return {"status": "success", "data": data}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "success", "data": []}
+
 # 全局变量
 watchlist_data = load_watchlist()
 watchlist_map = {item['code']: item for item in watchlist_data}

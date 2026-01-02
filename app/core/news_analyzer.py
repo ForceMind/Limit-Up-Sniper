@@ -83,6 +83,48 @@ def get_market_data(logger=None):
         
     return market_summary
 
+def save_news_history(news_items):
+    """保存新闻历史记录到 data/news_history.json"""
+    history_file = DATA_DIR / "news_history.json"
+    history = []
+    
+    # Load existing
+    if history_file.exists():
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        except:
+            pass
+            
+    # Merge (avoid duplicates based on text + timestamp)
+    existing_keys = {f"{item.get('timestamp', 0)}_{item.get('text', '')[:20]}" for item in history}
+    
+    for item in news_items:
+        # Ensure timestamp exists
+        ts = item.get('timestamp', int(time.time()))
+        text = item.get('text', '')
+        key = f"{ts}_{text[:20]}"
+        
+        if key not in existing_keys:
+            # Add source if not present
+            if 'source' not in item:
+                item['source'] = 'Unknown'
+            history.append(item)
+            existing_keys.add(key)
+            
+    # Sort by timestamp desc
+    history.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+    
+    # Keep last 200
+    history = history[:200]
+    
+    # Save
+    try:
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving news history: {e}")
+
 def get_cls_news(hours=12, logger=None):
     """
     抓取财联社电报最近 N 小时的数据 (串行)
@@ -167,6 +209,11 @@ def get_cls_news(hours=12, logger=None):
             if logger: logger(msg)
             break
             
+    # Save history
+    for item in news_list:
+        item['source'] = '财联社'
+    save_news_history(news_list)
+    
     return news_list
 
 def get_eastmoney_news(hours=12, logger=None):
@@ -244,6 +291,11 @@ def get_eastmoney_news(hours=12, logger=None):
     except Exception as e:
         if logger: logger(f"[!] EastMoney news fetch failed: {e}")
         
+    # Save history
+    for item in news_list:
+        item['source'] = '东方财富'
+    save_news_history(news_list)
+
     return news_list
 
 def analyze_news_with_deepseek(news_batch, market_summary="", logger=None, mode="after_hours"):

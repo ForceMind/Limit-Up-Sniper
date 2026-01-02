@@ -69,6 +69,11 @@
                     <a href="/lhb" class="flex items-center gap-1 text-[10px] md:text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 bg-red-50 dark:bg-red-900/30 px-1.5 md:px-3 py-0.5 md:py-1 rounded border border-red-200 dark:border-red-800 transition-colors shrink-0" title="查看龙虎榜">
                         <span>🐲</span><span class="hidden sm:inline">龙虎榜</span>
                     </a>
+                    
+                    <!-- News Button -->
+                    <button @click="openNewsCenter" class="flex items-center gap-1 text-[10px] md:text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/30 px-1.5 md:px-3 py-0.5 md:py-1 rounded border border-blue-200 dark:border-blue-800 transition-colors shrink-0" title="新闻中心">
+                        <span>📰</span><span class="hidden sm:inline">新闻</span>
+                    </button>
                 </div>
 
                 <!-- Mobile Tabs (Integrated in Header) -->
@@ -235,6 +240,47 @@
             </div>
         </div>
 
+        <!-- News Modal -->
+        <div v-if="showNewsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="showNewsModal = false">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <span>📰</span> 新闻舆情中心
+                    </h3>
+                    <button @click="showNewsModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">&times;</button>
+                </div>
+                <div class="flex-1 overflow-auto p-4 space-y-4 bg-gray-100 dark:bg-gray-900/50">
+                    <div v-if="newsList.length === 0" class="text-center text-gray-500 py-10">暂无新闻记录</div>
+                    <div v-for="(news, index) in newsList" :key="index" class="bg-white dark:bg-gray-800 p-4 rounded shadow-sm border border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{{ news.source || '未知来源' }}</span>
+                            <span class="text-xs text-gray-500">{{ news.time_str }}</span>
+                        </div>
+                        <div class="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">{{ news.text }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reason Modal (Mobile/Desktop) -->
+        <div v-if="showReasonModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="showReasonModal = false">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-fade-in-up">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-purple-50 dark:bg-purple-900/20">
+                    <h3 class="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <span>🎯</span> 选入逻辑
+                        <span class="text-sm font-normal text-gray-500">({{ currentReasonStock?.name }})</span>
+                    </h3>
+                    <button @click="showReasonModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xl">&times;</button>
+                </div>
+                <div class="p-4 max-h-[60vh] overflow-y-auto">
+                    <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap markdown-content" v-html="renderMarkdown(currentReasonStock?.news_summary || '暂无详细逻辑描述')"></div>
+                </div>
+                <div class="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-right">
+                    <button @click="showReasonModal = false" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">关闭</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Settings Modal -->
 
 
@@ -282,8 +328,12 @@
                         <!-- Scrollable List -->
                         <div class="p-2 space-y-1">
                             <div v-for="(stock, index) in aggressiveStocks" :key="stock.code" 
-                                 class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-500/20 grid gap-2 items-center px-2 py-2"
+                                 class="group rounded text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-500/20 grid gap-2 items-center px-2 py-2 relative cursor-pointer"
+                                 @click="openChart(stock)"
                                  style="grid-template-columns: 30px 60px 70px 60px 60px 50px 60px 1fr 45px 45px 45px 45px;">
+                                
+                                <!-- Reason Button (Floating) -->
+                                <button @click.stop="showReason(stock)" class="absolute left-0 top-0 bottom-0 w-1 bg-purple-500/50 hover:bg-purple-600 hover:w-2 transition-all z-10" title="查看选入逻辑"></button>
                                 
                                 <div class="font-mono text-gray-500 text-xs">#{{ index + 1 }}</div>
                                 <div class="text-gray-900 dark:text-gray-300 text-sm font-bold">{{ stock.code.replace('sh', '').replace('sz', '') }}</div>
@@ -1046,6 +1096,11 @@
         createApp({
             data() {
                 return {
+                    // Data
+                    newsList: [],
+                    showNewsModal: false,
+                    showReasonModal: false,
+                    currentReasonStock: null,
                     stocks: [],
                     limitUpPool: [],
                     brokenLimitPool: [],
@@ -1210,6 +1265,22 @@
                 // Removed resize logic as panel is now overlay
             },
             methods: {
+                async openNewsCenter() {
+                    this.showNewsModal = true;
+                    try {
+                        const res = await fetch('/api/news_history');
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.newsList = data.data;
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch news history", e);
+                    }
+                },
+                showReason(stock) {
+                    this.currentReasonStock = stock;
+                    this.showReasonModal = true;
+                },
                 handleSearchBlur() {
                     setTimeout(() => {
                         this.isSearchFocused = false;
