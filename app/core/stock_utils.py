@@ -29,8 +29,32 @@ def is_trading_time():
     return False
 
 def is_market_open_day():
-    """Check if today is a potential trading day (Mon-Fri)."""
-    return datetime.now().weekday() < 5
+    """Check if today is a potential trading day (Mon-Fri) and not a holiday."""
+    now = datetime.now()
+    date_str = now.strftime('%Y-%m-%d')
+    
+    # 2026 Holidays (Simple List)
+    # 元旦: 1.1 - 1.3
+    # 春节: 2.17 - 2.24 (Approx)
+    # 清明: 4.4 - 4.6
+    # 劳动: 5.1 - 5.5
+    # 端午: 6.19 - 6.21
+    # 中秋: 9.25 - 9.27
+    # 国庆: 10.1 - 10.7
+    HOLIDAYS_2026 = [
+        "2026-01-01", "2026-01-02", "2026-01-03",
+        "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20", "2026-02-21", "2026-02-22", "2026-02-23", "2026-02-24",
+        "2026-04-04", "2026-04-05", "2026-04-06",
+        "2026-05-01", "2026-05-02", "2026-05-03", "2026-05-04", "2026-05-05",
+        "2026-06-19", "2026-06-20", "2026-06-21",
+        "2026-09-25", "2026-09-26", "2026-09-27",
+        "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"
+    ]
+    
+    if date_str in HOLIDAYS_2026:
+        return False
+        
+    return now.weekday() < 5
 
 def fetch_history_data(code, days=300):
     """

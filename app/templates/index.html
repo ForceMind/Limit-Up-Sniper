@@ -247,16 +247,32 @@
                     <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <span>📰</span> 新闻舆情中心
                     </h3>
-                    <button @click="showNewsModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">&times;</button>
+                    <div class="flex items-center gap-2">
+                        <div class="relative group">
+                            <button class="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded flex items-center gap-1">
+                                清空历史 ▾
+                            </button>
+                            <div class="absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg hidden group-hover:block z-20">
+                                <button @click="clearNewsHistory('all')" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600">全部清空</button>
+                                <button @click="clearNewsHistory('before_today')" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">今天以前</button>
+                                <button @click="clearNewsHistory('before_3d')" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">3天以前</button>
+                                <button @click="clearNewsHistory('before_7d')" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">7天以前</button>
+                            </div>
+                        </div>
+                        <button @click="showNewsModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">&times;</button>
+                    </div>
                 </div>
                 <div class="flex-1 overflow-auto p-4 space-y-4 bg-gray-100 dark:bg-gray-900/50">
                     <div v-if="newsList.length === 0" class="text-center text-gray-500 py-10">暂无新闻记录</div>
-                    <div v-for="(news, index) in newsList" :key="index" class="bg-white dark:bg-gray-800 p-4 rounded shadow-sm border border-gray-200 dark:border-gray-700">
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{{ news.source || '未知来源' }}</span>
-                            <span class="text-xs text-gray-500">{{ news.time_str }}</span>
+                    <div v-for="(group, gIndex) in newsList" :key="gIndex" class="space-y-2">
+                        <div class="sticky top-0 z-10 bg-gray-200 dark:bg-gray-700 px-3 py-1 text-xs font-bold text-gray-600 dark:text-gray-300 rounded opacity-90">{{ group.date }}</div>
+                        <div v-for="(news, index) in group.items" :key="index" class="bg-white dark:bg-gray-800 p-4 rounded shadow-sm border border-gray-200 dark:border-gray-700">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{{ news.source || '未知来源' }}</span>
+                                <span class="text-xs text-gray-500">{{ news.time_str }}</span>
+                            </div>
+                            <div class="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">{{ news.text }}</div>
                         </div>
-                        <div class="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">{{ news.text }}</div>
                     </div>
                 </div>
             </div>
@@ -981,7 +997,30 @@
                         </div>
                     </div>
 
-                    <!-- 4. API Key Setting -->
+                    <!-- 4. News Settings -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                            <span>📰</span> 新闻中心配置
+                        </h4>
+                        <div class="space-y-3 pl-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">自动清理历史</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" v-model="systemConfig.news_auto_clean_enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div v-if="systemConfig.news_auto_clean_enabled" class="flex items-center justify-between">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">保留天数</span>
+                                <input type="number" v-model.number="systemConfig.news_auto_clean_days" class="w-20 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600">
+                            </div>
+                            <p class="text-[10px] text-gray-400">
+                                * 开启后，系统在保存新抓取的新闻时会自动删除超过保留天数的旧记录。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 5. API Key Setting -->
                     <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
                         <h4 class="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                             <span>🔑</span> API 设置
@@ -1162,7 +1201,9 @@
                         current_status: '空闲中',
                         last_run_time: null,
                         next_run_time: null,
-                        active_rule_index: -1
+                        active_rule_index: -1,
+                        news_auto_clean_enabled: true,
+                        news_auto_clean_days: 14
                     },
                     lhbConfig: {
                         enabled: false,
@@ -1271,10 +1312,49 @@
                         const res = await fetch('/api/news_history');
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.newsList = data.data;
+                            // Group by date
+                            const grouped = {};
+                            const today = new Date().toDateString();
+                            const yesterday = new Date(new Date().setDate(new Date().getDate() - 1)).toDateString();
+                            
+                            data.data.forEach(item => {
+                                const d = new Date(item.timestamp * 1000);
+                                let dateKey = d.toDateString();
+                                if (dateKey === today) dateKey = '今天';
+                                else if (dateKey === yesterday) dateKey = '昨天';
+                                else dateKey = d.toLocaleDateString();
+                                
+                                if (!grouped[dateKey]) grouped[dateKey] = [];
+                                grouped[dateKey].push(item);
+                            });
+                            
+                            // Convert to array for v-for
+                            this.newsList = Object.keys(grouped).map(key => ({
+                                date: key,
+                                items: grouped[key]
+                            }));
                         }
                     } catch (e) {
                         console.error("Failed to fetch news history", e);
+                    }
+                },
+                async clearNewsHistory(range = 'all') {
+                    const labels = {
+                        'all': '全部',
+                        'before_today': '今天以前',
+                        'before_3d': '3天以前',
+                        'before_7d': '7天以前'
+                    };
+                    if (!confirm(`确定要清空 ${labels[range] || range} 的新闻历史吗？`)) return;
+                    try {
+                        const res = await fetch(`/api/news_history/clear?range=${range}`);
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            // Refresh news list
+                            await this.openNewsCenter();
+                        }
+                    } catch (e) {
+                        console.error("Failed to clear news history", e);
                     }
                 },
                 showReason(stock) {
@@ -1357,7 +1437,9 @@
                                 auto_analysis_enabled: this.systemConfig.auto_analysis_enabled,
                                 use_smart_schedule: this.systemConfig.use_smart_schedule,
                                 fixed_interval_minutes: this.systemConfig.fixed_interval_minutes,
-                                schedule_plan: this.systemConfig.schedule_plan
+                                schedule_plan: this.systemConfig.schedule_plan,
+                                news_auto_clean_enabled: this.systemConfig.news_auto_clean_enabled,
+                                news_auto_clean_days: this.systemConfig.news_auto_clean_days
                             })
                         });
                         const data = await response.json();
@@ -2413,13 +2495,44 @@
                 // Update isMobile on mount to be sure
                 this.isMobile = window.innerWidth < 768;
 
-                if (this.isMobile) {
-                    if (!isWeekend && timeVal >= 930 && timeVal < 1500) {
-                        this.activeTab = 'intra';
-                    } else {
-                        this.activeTab = 'pre';
-                    }
-                }
+                // Check Market Status first
+                fetch('/api/status')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            const isMarketOpenDay = data.is_market_open_day;
+                            
+                            if (this.isMobile) {
+                                if (isMarketOpenDay && timeVal >= 930 && timeVal < 1500) {
+                                    this.activeTab = 'intra';
+                                } else {
+                                    this.activeTab = 'pre';
+                                }
+                            } else {
+                                // Desktop: If holiday/closed, maybe show Aggressive panel by default?
+                                // Current logic: showAggressivePanel = false if trading hours
+                                if (!isMarketOpenDay) {
+                                    this.showAggressivePanel = true;
+                                }
+                            }
+                            
+                            // Add visual indicator for holiday if needed
+                            if (!isMarketOpenDay) {
+                                console.log("Today is a holiday/closed market day.");
+                            }
+                        }
+                    })
+                    .catch(e => {
+                        console.error("Failed to check market status", e);
+                        // Fallback to local logic
+                        if (this.isMobile) {
+                            if (!isWeekend && timeVal >= 930 && timeVal < 1500) {
+                                this.activeTab = 'intra';
+                            } else {
+                                this.activeTab = 'pre';
+                            }
+                        }
+                    });
 
                 this.fetchData();
                 this.fetchLimitUpPool();

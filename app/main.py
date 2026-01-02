@@ -55,6 +55,52 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@app.get("/api/status")
+async def get_system_status():
+    """获取系统状态 (交易日/时间)"""
+    return {
+        "status": "success",
+        "is_trading_time": is_trading_time(),
+        "is_market_open_day": is_market_open_day(),
+        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+@app.get("/api/news_history/clear")
+async def clear_news_history(range: str = "all"):
+    """清理新闻历史
+    range: all, before_today, before_3d, before_7d
+    """
+    history_file = DATA_DIR / "news_history.json"
+    if not history_file.exists():
+        return {"status": "success", "message": "No history to clear"}
+        
+    try:
+        if range == "all":
+            new_history = []
+        else:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+            
+            now_ts = int(time.time())
+            if range == "before_today":
+                # Today 00:00:00
+                cutoff_ts = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+            elif range == "before_3d":
+                cutoff_ts = now_ts - (3 * 24 * 3600)
+            elif range == "before_7d":
+                cutoff_ts = now_ts - (7 * 24 * 3600)
+            else:
+                cutoff_ts = 0
+                
+            new_history = [item for item in history if item.get('timestamp', 0) >= cutoff_ts]
+            
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump(new_history, f, ensure_ascii=False, indent=2)
+            
+        return {"status": "success", "message": f"History cleared with range: {range}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 def load_watchlist():
     """加载复盘生成的关注列表"""
     file_path = DATA_DIR / "watchlist.json"
@@ -636,7 +682,9 @@ SYSTEM_CONFIG = {
     "next_run_time": 0,
     "current_status": "空闲中",
     "active_rule_index": -1,
-    "schedule_plan": DEFAULT_SCHEDULE
+    "schedule_plan": DEFAULT_SCHEDULE,
+    "news_auto_clean_enabled": True,
+    "news_auto_clean_days": 14
 }
 
 def load_config():
@@ -680,6 +728,8 @@ class ConfigUpdate(BaseModel):
     use_smart_schedule: bool
     fixed_interval_minutes: int
     schedule_plan: Optional[List[dict]] = None
+    news_auto_clean_enabled: Optional[bool] = True
+    news_auto_clean_days: Optional[int] = 14
 
 @app.post("/api/config")
 async def update_config(config: ConfigUpdate):
@@ -689,6 +739,11 @@ async def update_config(config: ConfigUpdate):
     SYSTEM_CONFIG["fixed_interval_minutes"] = config.fixed_interval_minutes
     if config.schedule_plan:
         SYSTEM_CONFIG["schedule_plan"] = config.schedule_plan
+    
+    if config.news_auto_clean_enabled is not None:
+        SYSTEM_CONFIG["news_auto_clean_enabled"] = config.news_auto_clean_enabled
+    if config.news_auto_clean_days is not None:
+        SYSTEM_CONFIG["news_auto_clean_days"] = config.news_auto_clean_days
     
     # [Fix] Reset last_run_time to now to prevent immediate scan if interval was reduced
     # This ensures the next scan happens AFTER the interval, not immediately.
